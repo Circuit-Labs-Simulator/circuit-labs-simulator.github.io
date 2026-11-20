@@ -30,8 +30,15 @@
   #toolbar button{touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;text-align:left}
   #clear{background:#5a2424;border-color:#904040;margin-top:6px}
   #topleft,#panel{z-index:5}
-  #panel{position:absolute;top:12px;right:12px;width:230px;margin:0}
-  #panel h3{margin:0 0 8px}
+  #panel{position:absolute;top:12px;right:12px;width:176px;margin:0;padding:8px 10px;font-size:12.5px}
+  #panel h3{margin:0 0 2px;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+  #panel label{margin:4px 0}
+  #panel button{padding:4px 6px;font-size:12px}
+  #panel .row{display:flex;gap:5px;margin:4px 0}
+  #panel .row button{flex:1}
+  #panel #pClose{padding:0 7px;font-size:14px;line-height:20px}
+  #panel #read{margin:5px 0;font-size:12px;line-height:1.35}
+  #panel p{margin:2px 0;font-size:11.5px}
   label{display:block;margin:8px 0}
   input[type=range]{width:100%;margin-top:4px}
   #read{margin:10px 0;color:#ffd866;font-size:13.5px;line-height:1.5}
@@ -557,17 +564,17 @@ function showPanel(){
   const p = $('panel');
   if (!sel){ p.hidden = true; return; }
   p.hidden = false;
-  let h = `<h3>${NAMES[sel.type]}</h3>`;
-  if (sel.type === 'battery')  h += slider('V', 'Voltage', 0, 100, 1, 'V') + `<button id="onoff" style="width:100%;margin-bottom:6px">${sel.off ? '🟢 Turn battery ON' : '⭘ Turn battery OFF'}</button><button id="rech" style="width:100%">⚡ Recharge</button>` + (sel.burnt ? `<button id="newBat" style="width:100%;margin-top:6px">🧯 Put in a new battery</button>` : '');
+  let h = `<h3><span>${NAMES[sel.type]}</span><button id="pClose" title="Close">×</button></h3>`;
+  if (sel.type === 'battery')  h += slider('V', 'Voltage', 0, 100, 1, 'V') + `<div class="row"><button id="onoff">${sel.off ? 'Turn ON' : 'Turn OFF'}</button><button id="rech">Recharge</button></div>` + (sel.burnt ? `<button id="newBat" style="width:100%">🧯 New battery</button>` : '');
   if (sel.type === 'bulb')     h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
   if (sel.type === 'resistor') h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
   if (sel.type === 'wire')     h += slider('thick', 'Thickness', 1, 10, 0.5, '') +
-                                    (wireRes ? '' : '<p>Turn on <b>Wire Resistance</b> (top left) to make thickness and length matter.</p>');
-  if (sel.type === 'fuse')     h += slider('rating', 'Blows above', 0.5, 20, 0.5, 'A') + `<button id="refuse" style="width:100%">🔧 Put in a new fuse</button>`;
+                                    (wireRes ? '' : '<p>Turn on <b>Wire Resistance</b> to make thickness and length matter.</p>');
+  if (sel.type === 'fuse')     h += slider('rating', 'Blows above', 0.5, 20, 0.5, 'A') + `<button id="refuse" style="width:100%">🔧 New fuse</button>`;
   if (sel.type === 'switch')   h += `<button id="tog" style="width:100%">${sel.closed ? 'Open switch' : 'Close switch'}</button>`;
-  h += `<label>Stretch (length): <b id="lenV">${(len(sel) / PX_PER_CM).toFixed(0)}</b> cm
+  h += `<label>Length: <b id="lenV">${(len(sel) / PX_PER_CM).toFixed(0)}</b> cm
     <input id="lenS" type="range" min="40" max="800" step="10" value="${Math.round(len(sel))}"></label>`;
-  h += `<div id="read"></div><button id="del">🗑 Delete this part</button>`;
+  h += `<div id="read"></div><button id="del">🗑 Delete</button>`;
   p.innerHTML = h;
   p.querySelectorAll('input[data-k]').forEach(el => {
     el.oninput = () => { sel[el.dataset.k] = +el.value; $('v_' + el.dataset.k).textContent = el.value; };
@@ -581,6 +588,7 @@ function showPanel(){
     $('lenV').textContent = (L / PX_PER_CM).toFixed(0);
   };
   $('del').onclick = removeSel;
+  $('pClose').onclick = () => select(null);
   if ($('rech')) $('rech').onclick = () => { sel.charge = 1; };
   if ($('onoff')) $('onoff').onclick = () => { sel.off = !sel.off; showPanel(); commit(); };
   if ($('newBat')) $('newBat').onclick = () => { sel.burnt = false; sel.heat = 0; sel.charge = 1; showPanel(); commit(); };
@@ -633,13 +641,13 @@ function updateReadout(){
          `<br><span style="color:#a9b8d8">Ohm's law: V = I × R<br>${fmt(V)} = ${fmt(I)} × ${sel.R}</span>`;
   }
   if (sel.type === 'wire' && wireRes) t += `<br>Voltage drop: ${fmt(Math.abs(sel.Vab || 0))} V`;
-  if (sel.type === 'fuse') t += sel.blown ? `<br><span style="color:#ff6b6b">Blown! Too much current went through it.</span>` : `<br>Blows above ${sel.rating} A`;
-  if (sel.type === 'battery' && I > 50) t += `<br><span style="color:#ff6b6b">Short circuit! Nothing is slowing the current down, so the battery is catching fire.</span>`;
-  if (sel.type === 'battery' && sel.burnt) t += `<br><span style="color:#ff6b6b">Burnt out by a short circuit.</span>`;
+  if (sel.type === 'fuse') t += sel.blown ? `<br><span style="color:#ff6b6b">Blown! Too much current</span>` : `<br>Blows above ${sel.rating} A`;
+  if (sel.type === 'battery' && I > 50) t += `<br><span style="color:#ff6b6b">Short circuit! Catching fire</span>`;
+  if (sel.type === 'battery' && sel.burnt) t += `<br><span style="color:#ff6b6b">Burnt out</span>`;
   if (sel.type === 'battery' && drainOn && !sel.burnt){
     t += `<br>Charge: ${Math.round(sel.charge * 100)}%`;
     if (sel.charge <= 0) t += ` <span style="color:#ff6b6b">(dead)</span>`;
-    else if (sel.I > 0) t += `<br>Runs out in about ${Math.ceil(sel.charge * CAP / Math.min(sel.I, 25))} s`;
+    else if (sel.I > 0) t += `<br>Runs out in ~${Math.ceil(sel.charge * CAP / Math.min(sel.I, 25))} s`;
   }
   $('read').innerHTML = t;
   if ($('lenS') && document.activeElement !== $('lenS')){
