@@ -706,7 +706,7 @@ function label(c, text, col, side){
 }
 // how bright a bulb is, 0 to 1. Eyes notice brightness in steps of "times as much power",
 // so this is a log scale: 1 W, 10 W, 100 W, 1000 W are evenly spaced and it keeps changing all the way up
-function bulbBr(c){ const P = c.I * c.I * c.R; return P / (P + 3.5); }   // 9 V on a 10 ohm bulb (8.1 W) = 70%: bright, with room left to get brighter
+function bulbBr(c){ const P = c.I * c.I * c.R; return P / (P + 5); }   // 9 V on a 10 ohm bulb (8.1 W) = 62%: bright, with room left to get brighter
 
 // the road the charges travel. In a bulb they go up one post, across the filament and down the other post
 function chargePath(c, L, ux, uy){
@@ -851,7 +851,7 @@ function drawComp(c, dt){
     if (ux < 0) ctx.scale(1, -1);                    // keep the glass pointing up
     const gy = -48;                                  // centre of the glass
     if (br > 0.01){                                  // glow: bigger and stronger with every bit more power
-      const R = 30 + 190 * br, g = ctx.createRadialGradient(0, gy, 10, 0, gy, R);
+      const R = 30 + 160 * br, g = ctx.createRadialGradient(0, gy, 10, 0, gy, R);
       g.addColorStop(0, `rgba(255,${236 + 19 * br},${130 + 100 * br},${Math.min(0.95, 0.15 + 1.5 * br)})`); g.addColorStop(1, 'rgba(255,236,130,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, gy, R, 0, 6.2832); ctx.fill();
       // light rays: longer and stronger the brighter the bulb is
