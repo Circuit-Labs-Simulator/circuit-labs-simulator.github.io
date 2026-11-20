@@ -124,7 +124,7 @@
       <li><b>Series vs Parallel:</b> press that example to see both side by side. The series bulbs are dimmer (they share the voltage). The parallel bulbs are brighter, but the battery gives twice the current, so its charge bar empties faster.</li>
       <li><b>Meters</b> (top right): turn one on, then drag it and its probes.
         <b>Ammeter</b>: hold the ring over any part to read its current.
-        <b>Voltmeter</b>: touch the red (–) and black (+) probes to two spots to read the voltage between them.
+        <b>Voltmeter</b>: touch the red (+) and black (–) probes to two spots to read the voltage between them.
         <b>Ohmmeter</b>: touch its two probes to two spots to read the resistance between them (it ignores the batteries, like measuring with the power off).</li>
       <li><b>Electrons vs conventional:</b> electrons (blue –) really flow from – to +. Conventional current (red arrows) is drawn from + to –.</li>
     </ul>
@@ -272,7 +272,8 @@ function toggleMeter(k, i, btn){
   if (!m.on) return;
   m.x = bx(W - 300); m.y = by(90 + i * 160);
   if (k === 'amm'){ m.probes[0].x = m.x - 120; m.probes[0].y = m.y + 40; }
-  else { m.probes[0].x = m.x - 40; m.probes[0].y = m.y + 110; m.probes[1].x = m.x + 10; m.probes[1].y = m.y + 110; }
+  else { const f = k === 'volt' ? 1 : 0;             // voltmeter: black (–) on the left, red (+) on the right
+    m.probes[f].x = m.x - 40; m.probes[f].y = m.y + 110; m.probes[1 - f].x = m.x + 10; m.probes[1 - f].y = m.y + 110; }
 }
 function touchAt(x, y, reach){                       // which part is a probe touching, and where along it
   let best = null, bd = reach || 13;
@@ -292,7 +293,7 @@ function meterText(k){
   if (!t1 || !t2) return k === 'volt' ? '? V' : '? Ω';
   if (k === 'volt'){
     if (probeIsl(t1) !== probeIsl(t2)) return '0.00 V';
-    const v = probeV(t2) - probeV(t1);          // black probe is +, red probe is – (Rishik's choice)
+    const v = probeV(t1) - probeV(t2);          // red probe is +, black probe is –
     return (Math.abs(v) < 0.005 ? 0 : v).toFixed(2) + ' V';
   }
   const R = eqR(probeNode(t1), probeNode(t2));
@@ -330,14 +331,14 @@ function drawMeters(){
       ctx.moveTo(p.x, p.y - 13); ctx.lineTo(p.x, p.y - 5); ctx.moveTo(p.x, p.y + 5); ctx.lineTo(p.x, p.y + 13); ctx.stroke();
     } else {
       m.probes.forEach((p, i) => {
-        cable(p.x, p.y - 44, m.x + (i ? 30 : -30), by, p.col);
+        cable(p.x, p.y - 44, m.x + ((k === 'volt' ? !i : i) ? 30 : -30), by, p.col);
         line(p.x, p.y - 12, p.x, p.y - 44, 13, '#dfe6f5');           // handle (light outline so black shows up)
         line(p.x, p.y - 12, p.x, p.y - 44, 10, p.col);
         ctx.lineCap = 'butt'; ctx.strokeStyle = '#c9ccd4'; ctx.lineWidth = 3.5;
         ctx.beginPath(); ctx.moveTo(p.x, p.y - 12); ctx.lineTo(p.x, p.y + 1); ctx.stroke();   // metal tip
-        if (k === 'volt'){                              // black is the + probe, red is the – probe
+        if (k === 'volt'){                              // red is the + probe, black is the – probe
           ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText(i ? '+' : '–', p.x, p.y - 30);
+          ctx.fillText(i ? '–' : '+', p.x, p.y - 30);
         }
       });
     }
