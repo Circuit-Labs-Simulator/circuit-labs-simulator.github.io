@@ -327,6 +327,10 @@ function drawMeters(){
         line(p.x, p.y - 12, p.x, p.y - 44, 10, p.col);
         ctx.lineCap = 'butt'; ctx.strokeStyle = '#c9ccd4'; ctx.lineWidth = 3.5;
         ctx.beginPath(); ctx.moveTo(p.x, p.y - 12); ctx.lineTo(p.x, p.y + 1); ctx.stroke();   // metal tip
+        if (k === 'volt'){                              // red is the + probe, black is the – probe
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(i ? '–' : '+', p.x, p.y - 30);
+        }
       });
     }
     ctx.fillStyle = m.col; ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 2;
