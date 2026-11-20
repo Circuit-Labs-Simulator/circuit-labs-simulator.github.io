@@ -36,6 +36,15 @@
   input[type=range]{width:100%;margin-top:4px}
   #read{margin:10px 0;color:#ffd866;font-size:13.5px;line-height:1.5}
   #del{background:#5a2424;border-color:#904040;width:100%}
+  #view h3{display:flex;align-items:center;justify-content:space-between}
+  #view #viewHide{width:auto;margin:0;padding:2px 9px}
+  #view.away{display:none}
+  #viewTab{position:absolute;top:12px;right:0;z-index:5;border-radius:8px 0 0 8px;border-right:0;padding:8px 10px}
+  #viewTab[hidden]{display:none}
+  #zoom{position:absolute;left:12px;bottom:34px;z-index:5;display:flex;gap:6px;align-items:center}
+  #zoom button{padding:4px 11px}
+  #zoom #zPct{min-width:58px}
+  #credit{position:absolute;right:14px;bottom:34px;z-index:4;font-size:13px;font-weight:600;color:#a9b8d8;pointer-events:none}
   #hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:12.5px;color:#8fa3cc;white-space:nowrap}
 </style>
 </head>
@@ -58,6 +67,7 @@
     <button data-add="bulb">💡 Light Bulb</button>
     <button data-add="resistor">▭ Resistor</button>
     <button data-add="switch">⏻ Switch</button>
+    <button data-add="fuse">⌁ Fuse</button>
     <hr>
     <button id="exSeries">⚡ Series example</button>
     <button id="exParallel">⚡ Parallel example</button>
@@ -68,7 +78,8 @@
 </div>
 
 <div id="view" class="card">
-  <h3>⚡ Circuit Lab</h3>
+  <h3><span>⚡ Circuit Lab</span><button id="viewHide" title="Hide this box">»</button></h3>
+  <button id="schBtn" style="margin:0 0 4px">📐 Schematic view</button>
   <label><input type="checkbox" id="chkCur" checked> Show current</label>
   <label class="sub"><input type="radio" name="ct" id="rE" checked> Electrons</label>
   <label class="sub"><input type="radio" name="ct" id="rC"> Conventional</label>
@@ -83,6 +94,10 @@
   <button id="helpBtn">❓ How to use</button>
 </div>
 
+<button id="viewTab" hidden title="Show the Circuit Lab box">« ⚡</button>
+<div id="zoom"><button id="zOut" title="Zoom out">−</button><button id="zPct" title="Back to normal size">100%</button><button id="zIn" title="Zoom in">+</button></div>
+<div id="credit">Made by Rishik</div>
+
 <div id="help" hidden>
   <div class="card">
     <h3 style="margin:0 0 6px">How to use Circuit Lab</h3>
@@ -93,6 +108,10 @@
       <li><b>Change it:</b> click a part to set its voltage, resistance, thickness or length. Its voltage, current and power show there too.</li>
       <li><b>Delete:</b> right-click the part, press Delete, or drag it back to the parts box. Ctrl/Cmd+Z undoes.</li>
       <li><b>Switch:</b> double-click it to open or close it.</li>
+      <li><b>Battery:</b> click it for the ON / OFF button (or double-click it) to turn it off without deleting it.</li>
+      <li><b>Fuse:</b> it blows (breaks the circuit) when the current goes above its rating. Click it to change the rating or put in a new fuse.</li>
+      <li><b>Schematic view</b> (top right): shows the same circuit as a diagram with the standard symbols. Press it again to go back.</li>
+      <li><b>More space:</b> scroll or use − / + (bottom left) to zoom, drag the empty background to slide the board around, and press » to tuck the Circuit Lab box away.</li>
       <li><b>Wire Resistance</b> (top left): when it is ON, longer and thinner wires have more resistance, so the current drops and the electrons slow down.</li>
       <li><b>Series vs Parallel:</b> press that example to see both side by side. The series bulbs are dimmer (they share the voltage). The parallel bulbs are brighter, but the battery gives twice the current, so its charge bar empties faster.</li>
       <li><b>Meters</b> (top right): turn one on, then drag it and its probes.
@@ -120,6 +139,18 @@ function resize(){
 }
 addEventListener('resize', resize); resize();
 
+// ---------- zoom + slide the board ----------  screen = board * z + offset
+const view = {z:1, ox:0, oy:0}, mouse = {x:0, y:0};
+const bx = sx => (sx - view.ox) / view.z, by = sy => (sy - view.oy) / view.z;      // screen -> board
+const toScr = p => ({x: p.x * view.z + view.ox, y: p.y * view.z + view.oy});      // board -> screen
+function zoomAt(sx, sy, f){
+  const nz = Math.max(0.3, Math.min(2, view.z * f));
+  view.ox = sx - (sx - view.ox) * nz / view.z; view.oy = sy - (sy - view.oy) * nz / view.z; view.z = nz;
+  $('zPct').textContent = Math.round(nz * 100) + '%';
+  placePanel();
+}
+let schematic = false;
+
 // ---------- circuit data ----------
 const comps = [];
 let sel = null, wireRes = false, rho = 0.5;
@@ -128,13 +159,13 @@ let drainOn = true;                 // batteries lose charge while they push cur
 const CAP = 120;                    // battery size in amp-seconds (0.9 A lasts about 2 minutes)
 let nodeCount = 0;
 const emf = c => c.V * (drainOn ? Math.min(1, c.charge / 0.15) : 1);   // voltage sags when nearly empty
-const NAMES = {wire:'Wire', battery:'Battery', bulb:'Light Bulb', resistor:'Resistor', switch:'Switch'};
-const HALF = {wire:0, battery:50, bulb:12, resistor:36, switch:26};   // half-length of the drawn body
+const NAMES = {wire:'Wire', battery:'Battery', bulb:'Light Bulb', resistor:'Resistor', switch:'Switch', fuse:'Fuse'};
+const HALF = {wire:0, battery:50, bulb:12, resistor:36, switch:26, fuse:30};   // half-length of the drawn body
 const TINY = 1e-3;          // "zero" resistance
 const SNAP = 24, PX_PER_CM = 10;
 
 function add(type, x1, y1, x2, y2){
-  const c = {type, a:{x:x1,y:y1}, b:{x:x2,y:y2}, phase:0, I:0, V:9, R:10, thick:4, closed:true, charge:1};
+  const c = {type, a:{x:x1,y:y1}, b:{x:x2,y:y2}, phase:0, I:0, V:9, R:10, thick:4, closed:true, charge:1, rating:2, blown:false};
   comps.push(c); return c;
 }
 const len = c => Math.hypot(c.b.x - c.a.x, c.b.y - c.a.y);
@@ -144,7 +175,8 @@ function resistance(c){
     case 'bulb':
     case 'resistor':return c.R;
     case 'switch':  return c.closed ? TINY : Infinity;
-    case 'battery': return TINY;
+    case 'battery': return c.off ? Infinity : TINY;   // switched off = no path through it
+    case 'fuse':    return c.blown ? Infinity : TINY;
   }
 }
 
@@ -230,7 +262,7 @@ const meters = {
 function toggleMeter(k, i, btn){
   const m = meters[k]; m.on = !m.on; btn.classList.toggle('on', m.on);
   if (!m.on) return;
-  m.x = W - 300; m.y = 90 + i * 160;
+  m.x = bx(W - 300); m.y = by(90 + i * 160);
   if (k === 'amm'){ m.probes[0].x = m.x - 120; m.probes[0].y = m.y + 40; }
   else { m.probes[0].x = m.x - 40; m.probes[0].y = m.y + 110; m.probes[1].x = m.x + 10; m.probes[1].y = m.y + 110; }
 }
@@ -315,14 +347,16 @@ function distSeg(px, py, a, b){
   let t = ((px - a.x) * dx + (py - a.y) * dy) / L2; t = Math.max(0, Math.min(1, t));
   return Math.hypot(px - (a.x + t*dx), py - (a.y + t*dy));
 }
+const grabR = () => 20 / Math.sqrt(Math.min(1, view.z));   // a bit more forgiving when zoomed out
 cv.addEventListener('pointerdown', e => {
-  const x = e.clientX, y = e.clientY;
+  const x = bx(e.clientX), y = by(e.clientY);
+  mouse.x = e.clientX; mouse.y = e.clientY;
   const mh = meterHit(x, y);                         // meters sit on top, so they get grabbed first
   if (mh){ drag = {kind:'meter', m:mh.m, probe:mh.probe, lx:x, ly:y, moved:false}; return; }
   // endpoint?
   let hit = null;
   for (const ep of endpoints().reverse())
-    if (Math.hypot(ep.p.x - x, ep.p.y - y) < 20){ hit = ep; break; }
+    if (Math.hypot(ep.p.x - x, ep.p.y - y) < grabR()){ hit = ep; break; }
   if (hit){
     const group = endpoints().filter(ep => Math.abs(ep.p.x - hit.p.x) < 1 && Math.abs(ep.p.y - hit.p.y) < 1).map(ep => ep.p);
     // every part reshapes freely: the end you grab goes wherever you drag it, the other end stays put
@@ -337,6 +371,7 @@ cv.addEventListener('pointerdown', e => {
   const c = partAt(x, y);
   if (c){ drag = {kind:'body', c, lx:x, ly:y, moved:false}; select(c); return; }
   select(null);
+  drag = {kind:'pan', moved:false};                  // dragging empty space slides the whole board
 });
 function bulbUp(c){                                  // which way the bulb's glass points
   const L = len(c) || 1, ux = (c.b.x - c.a.x) / L, uy = (c.b.y - c.a.y) / L, f = ux < 0 ? -1 : 1;
@@ -355,13 +390,16 @@ function partAt(x, y){
 }
 cv.addEventListener('contextmenu', e => {            // right-click a part = delete it
   e.preventDefault();
-  const c = partAt(e.clientX, e.clientY);
+  const c = partAt(bx(e.clientX), by(e.clientY));
   if (c){ sel = c; removeSel(); }
 });
 addEventListener('pointermove', e => {
-  const x = e.clientX, y = e.clientY;
+  const x = bx(e.clientX), y = by(e.clientY);
+  const mdx = e.clientX - mouse.x, mdy = e.clientY - mouse.y;
+  mouse.x = e.clientX; mouse.y = e.clientY;
+  if (drag && drag.kind === 'pan'){ drag.moved = true; view.ox += mdx; view.oy += mdy; cv.style.cursor = 'grabbing'; return; }
   if (!drag){
-    const onDot = endpoints().some(ep => Math.hypot(ep.p.x - x, ep.p.y - y) < 20);
+    const onDot = endpoints().some(ep => Math.hypot(ep.p.x - x, ep.p.y - y) < grabR());
     cv.style.cursor = meterHit(x, y) ? 'grab' : onDot ? 'crosshair' : partAt(x, y) ? 'move' : 'default';
     return;
   }
@@ -406,21 +444,22 @@ function snapPoint(p, ignore){
 }
 addEventListener('pointerup', () => {
   if (!drag) return;
-  if (drag.kind === 'meter'){ drag = null; return; }
+  if (drag.kind === 'meter' || drag.kind === 'pan'){ drag = null; cv.style.cursor = 'default'; return; }
+  let placed = false;
   if (drag.fresh){
     // just clicked (or dropped it on the toolbar): put it in the middle of the board
     const c = drag.c;
     if (!drag.moved){
-      const x = W / 2 + (Math.random() * 120 - 60), y = H / 2 + (Math.random() * 80 - 40);
+      const x = bx(W / 2) + (Math.random() * 120 - 60), y = by(H / 2) + (Math.random() * 80 - 40);
       c.a.x = x - 70; c.a.y = y; c.b.x = x + 70; c.b.y = y;
-      drag.lx = x; drag.ly = y;
+      placed = true;
     }
     drag.moved = true;
   }
   // dropping a part back on the parts box throws it away
-  if (drag.kind === 'body' && drag.moved){
+  if (drag.kind === 'body' && drag.moved && !placed){
     const r = $('toolbar').getBoundingClientRect();
-    if (drag.lx > r.left && drag.lx < r.right && drag.ly > r.top && drag.ly < r.bottom){
+    if (mouse.x > r.left && mouse.x < r.right && mouse.y > r.top && mouse.y < r.bottom){
       sel = drag.c; removeSel(); drag = null; return;
     }
   }
@@ -445,7 +484,12 @@ addEventListener('pointerup', () => {
   placePanel();
   commit();
 });
-cv.addEventListener('dblclick', () => { if (sel && sel.type === 'switch'){ sel.closed = !sel.closed; showPanel(); commit(); } });
+cv.addEventListener('dblclick', () => { if (sel && sel.type === 'switch'){ sel.closed = !sel.closed; showPanel(); commit(); }
+  else if (sel && sel.type === 'battery'){ sel.off = !sel.off; showPanel(); commit(); } });
+cv.addEventListener('wheel', e => {                  // scroll (or pinch) = zoom where the mouse is
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)));
+}, {passive:false});
 addEventListener('keydown', e => {
   if ((e.key === 'Delete' || e.key === 'Backspace') && sel && e.target.tagName !== 'INPUT'){ removeSel(); e.preventDefault(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'){ undo(); e.preventDefault(); }
@@ -456,12 +500,12 @@ function removeSel(){ const i = comps.indexOf(sel); if (i >= 0) comps.splice(i, 
 // ---------- undo + autosave ----------
 const undoStack = [];
 function snapshot(){
-  return JSON.stringify(comps.map(c => ({type:c.type, a:c.a, b:c.b, V:c.V, R:c.R, thick:c.thick, closed:c.closed})));
+  return JSON.stringify(comps.map(c => ({type:c.type, a:c.a, b:c.b, V:c.V, R:c.R, thick:c.thick, closed:c.closed, off:!!c.off, rating:c.rating, blown:!!c.blown})));
 }
 function restore(s){
   const list = JSON.parse(s);
   comps.length = 0; sel = null; showPanel();
-  for (const o of list) Object.assign(add(o.type, o.a.x, o.a.y, o.b.x, o.b.y), {V:o.V, R:o.R, thick:o.thick, closed:o.closed});
+  for (const o of list) Object.assign(add(o.type, o.a.x, o.a.y, o.b.x, o.b.y), {V:o.V, R:o.R, thick:o.thick, closed:o.closed, off:!!o.off, rating:o.rating || 2, blown:!!o.blown});
 }
 function save(s){ try { localStorage.setItem('circuitLab', s); } catch (e) {} }
 function commit(){                                   // call after every finished change
@@ -491,7 +535,7 @@ function parallelAt(cx, cy, hw){                     // two branches: each bulb 
 }
 function example(kind){
   comps.length = 0; sel = null; showPanel();
-  const cx = Math.round(W / 2) + 10, cy = Math.round(H / 2) + 20;
+  const cx = Math.round(bx(W / 2)) + 10, cy = Math.round(by(H / 2)) + 20;
   if (kind === 'series') seriesAt(cx, cy, 220);
   else if (kind === 'parallel') parallelAt(cx, cy, 220);
   else { seriesAt(cx - 195, cy, 150); parallelAt(cx + 195, cy, 150); }   // side by side to compare
@@ -509,11 +553,12 @@ function showPanel(){
   if (!sel){ p.hidden = true; return; }
   p.hidden = false;
   let h = `<h3>${NAMES[sel.type]}</h3>`;
-  if (sel.type === 'battery')  h += slider('V', 'Voltage', 0, 100, 1, 'V') + `<button id="rech" style="width:100%">⚡ Recharge</button>`;
+  if (sel.type === 'battery')  h += slider('V', 'Voltage', 0, 100, 1, 'V') + `<button id="onoff" style="width:100%;margin-bottom:6px">${sel.off ? '🟢 Turn battery ON' : '⭘ Turn battery OFF'}</button><button id="rech" style="width:100%">⚡ Recharge</button>`;
   if (sel.type === 'bulb')     h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
   if (sel.type === 'resistor') h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
   if (sel.type === 'wire')     h += slider('thick', 'Thickness', 1, 10, 0.5, '') +
                                     (wireRes ? '' : '<p>Turn on <b>Wire Resistance</b> (top left) to make thickness and length matter.</p>');
+  if (sel.type === 'fuse')     h += slider('rating', 'Blows above', 0.5, 20, 0.5, 'A') + `<button id="refuse" style="width:100%">🔧 Put in a new fuse</button>`;
   if (sel.type === 'switch')   h += `<button id="tog" style="width:100%">${sel.closed ? 'Open switch' : 'Close switch'}</button>`;
   h += `<label>Stretch (length): <b id="lenV">${(len(sel) / PX_PER_CM).toFixed(0)}</b> cm
     <input id="lenS" type="range" min="40" max="800" step="10" value="${Math.round(len(sel))}"></label>`;
@@ -532,6 +577,8 @@ function showPanel(){
   };
   $('del').onclick = removeSel;
   if ($('rech')) $('rech').onclick = () => { sel.charge = 1; };
+  if ($('onoff')) $('onoff').onclick = () => { sel.off = !sel.off; showPanel(); commit(); };
+  if ($('refuse')) $('refuse').onclick = () => { sel.blown = false; commit(); };
   placePanel();
   if ($('tog')) $('tog').onclick = () => { sel.closed = !sel.closed; showPanel(); commit(); };
 }
@@ -540,18 +587,20 @@ function placePanel(){
   const p = $('panel');
   if (!sel || p.hidden) return;
   const ph = p.offsetHeight, pw = p.offsetWidth;
-  const mx = (sel.a.x + sel.b.x) / 2, top = Math.min(sel.a.y, sel.b.y), bot = Math.max(sel.a.y, sel.b.y);
-  const right = Math.max(sel.a.x, sel.b.x), left = Math.min(sel.a.x, sel.b.x), my = (top + bot) / 2;
+  const A = toScr(sel.a), B = toScr(sel.b), z = view.z;      // the box lives on the screen, parts live on the board
+  const mx = (A.x + B.x) / 2, top = Math.min(A.y, B.y), bot = Math.max(A.y, B.y);
+  const right = Math.max(A.x, B.x), left = Math.min(A.x, B.x), my = (top + bot) / 2;
   // try below, above, right, left and docked on the right edge; keep the spot that covers the fewest parts
-  const spots = [[mx - pw / 2, bot + 45], [mx - pw / 2, top - 90 - ph], [right + 50, my - ph / 2],
-                 [left - 50 - pw, my - ph / 2], [W - pw - 12, $('view').getBoundingClientRect().bottom + 10]];
+  const spots = [[mx - pw / 2, bot + 45 * z], [mx - pw / 2, top - 90 * z - ph], [right + 50 * z, my - ph / 2],
+                 [left - 50 * z - pw, my - ph / 2], [W - pw - 12, $('view').getBoundingClientRect().bottom + 10]];
   const pts = [], vr = $('view').getBoundingClientRect();
   for (let i = 0; i <= 2; i++) for (let j = 0; j <= 4; j++)          // don't sit on top of the Show box
     pts.push({x: vr.left + vr.width * i / 2, y: vr.top + vr.height * j / 4, w: 8});
   for (const c of comps){
     const w = c === sel ? 4 : 1;                     // covering the part you clicked is worst
-    for (let t = 0; t <= 1; t += 0.125) pts.push({x: c.a.x + (c.b.x - c.a.x) * t, y: c.a.y + (c.b.y - c.a.y) * t, w});
-    if (c.type === 'bulb'){ const u = bulbUp(c); pts.push({x: (c.a.x + c.b.x) / 2 + u.x * 48, y: (c.a.y + c.b.y) / 2 + u.y * 48, w: 3 * w}); }
+    const a = toScr(c.a), b = toScr(c.b);
+    for (let t = 0; t <= 1; t += 0.125) pts.push({x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, w});
+    if (c.type === 'bulb' && !schematic){ const u = bulbUp(c); pts.push({x: (a.x + b.x) / 2 + u.x * 48 * z, y: (a.y + b.y) / 2 + u.y * 48 * z, w: 3 * w}); }
   }
   let best = null, bestScore = Infinity;
   for (const [sx, sy] of spots){
@@ -578,6 +627,7 @@ function updateReadout(){
          `<br><span style="color:#a9b8d8">Ohm's law: V = I × R<br>${fmt(V)} = ${fmt(I)} × ${sel.R}</span>`;
   }
   if (sel.type === 'wire' && wireRes) t += `<br>Voltage drop: ${fmt(Math.abs(sel.Vab || 0))} V`;
+  if (sel.type === 'fuse') t += sel.blown ? `<br><span style="color:#ff6b6b">Blown! Too much current went through it.</span>` : `<br>Blows above ${sel.rating} A`;
   if (sel.type === 'battery' && I > 50) t += `<br><span style="color:#ff6b6b">Short circuit!</span>`;
   if (sel.type === 'battery' && drainOn){
     t += `<br>Charge: ${Math.round(sel.charge * 100)}%`;
@@ -600,7 +650,8 @@ $('rho').oninput = e => { rho = +e.target.value; $('rhoV').textContent = rho; };
 // press a toolbar button and drag: the new part comes out under your mouse (like PhET's toolbox)
 document.querySelectorAll('[data-add]').forEach(b => b.addEventListener('pointerdown', e => {
   e.preventDefault();
-  const x = e.clientX, y = e.clientY;
+  const x = bx(e.clientX), y = by(e.clientY);
+  mouse.x = e.clientX; mouse.y = e.clientY;
   const c = add(b.dataset.add, x - 70, y, x + 70, y);
   if (c.type === 'switch') c.closed = false;
   drag = {kind:'body', c, lx:x, ly:y, moved:false, fresh:true};
@@ -609,6 +660,17 @@ document.querySelectorAll('[data-add]').forEach(b => b.addEventListener('pointer
 $('clear').onclick = () => { comps.length = 0; select(null); commit(); };
 $('undo').onclick = undo;
 $('exBoth').onclick = () => example('both');
+$('schBtn').onclick = () => {
+  schematic = !schematic;
+  $('schBtn').classList.toggle('on', schematic);
+  $('schBtn').textContent = schematic ? '🔋 Real-life view' : '📐 Schematic view';
+  placePanel();
+};
+$('viewHide').onclick = () => { $('view').classList.add('away'); $('viewTab').hidden = false; placePanel(); };
+$('viewTab').onclick  = () => { $('view').classList.remove('away'); $('viewTab').hidden = true; placePanel(); };
+$('zOut').onclick = () => zoomAt(W / 2, H / 2, 1 / 1.25);
+$('zIn').onclick  = () => zoomAt(W / 2, H / 2, 1.25);
+$('zPct').onclick = () => { zoomAt(W / 2, H / 2, 1 / view.z); view.z = 1; };
 $('chkDrain').onchange = e => { drainOn = e.target.checked; };
 $('rechAll').onclick = () => { for (const c of comps) c.charge = 1; };
 $('mAmm').onclick  = e => toggleMeter('amm', 0, e.currentTarget);
@@ -640,11 +702,11 @@ function label(c, text, col, side){
 }
 // how bright a bulb is, 0 to 1. Eyes notice brightness in steps of "times as much power",
 // so this is a log scale: 1 W, 10 W, 100 W, 1000 W are evenly spaced and it keeps changing all the way up
-function bulbBr(c){ return Math.min(1, Math.log10(1 + c.I * c.I * c.R) / 3); }
+function bulbBr(c){ const P = c.I * c.I * c.R; return P / (P + 3.5); }   // 9 V on a 10 ohm bulb (8.1 W) = 70%: bright, with room left to get brighter
 
 // the road the charges travel. In a bulb they go up one post, across the filament and down the other post
 function chargePath(c, L, ux, uy){
-  if (c.type !== 'bulb') return [c.a, c.b];
+  if (c.type !== 'bulb' || schematic) return [c.a, c.b];
   const mx = (c.a.x + c.b.x) / 2, my = (c.a.y + c.b.y) / 2, f = ux < 0 ? -1 : 1;
   const P = (lx, ly) => ({x: mx + lx * ux - ly * f * uy, y: my + lx * uy + ly * f * ux});
   return [c.a, P(-5, 0), P(-5, -16), P(-9, -45), P(9, -45), P(5, -16), P(5, 0), c.b];
@@ -664,7 +726,7 @@ function drawCharges(c, dt, L, ux, uy, h){
     if (!bulb && h && Math.abs(s - L / 2) < h && !(c.type === 'switch' && c.closed)) continue;   // hidden inside the part
     const d = seg[i] || 1, t = (s - acc) / d, p = pts[i], q = pts[i + 1];
     const ex = p.x + (q.x - p.x) * t, ey = p.y + (q.y - p.y) * t, dx = (q.x - p.x) / d, dy = (q.y - p.y) / d;
-    const r = bulb && i > 0 && i < seg.length - 1 ? 5.5 : 8, k = r / 8;      // a bit smaller inside the bulb
+    const r = schematic ? 4.5 : bulb && i > 0 && i < seg.length - 1 ? 5.5 : 8, k = r / 8;      // a bit smaller inside the bulb
     if (conventional){                               // red arrows pointing the way + charge flows
       const dir = c.I >= 0 ? k : -k;
       ctx.fillStyle = '#ff5a4d'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
@@ -683,13 +745,63 @@ function drawCharges(c, dt, L, ux, uy, h){
     ctx.beginPath(); ctx.moveTo(ex - r / 2, ey); ctx.lineTo(ex + r / 2, ey); ctx.stroke();   // the minus sign
   }
 }
+// schematic view: the same part drawn as its circuit-diagram symbol
+function drawSchem(c, dt, L, ux, uy, mx, my){
+  const t = c.type, ink = '#e8eefc';
+  let h = {wire:0, battery:0, bulb:16, resistor:30, switch:22, fuse:24}[t], cells = 0;
+  if (t === 'battery'){ cells = Math.max(1, Math.min(4, Math.round(c.V / 3))); h = (cells * 8 + (cells - 1) * 10) / 2; }   // about one cell for every 3 V
+  h = Math.min(h, L / 2);
+  if (c === sel) line(c.a.x, c.a.y, c.b.x, c.b.y, 14, 'rgba(255,216,102,.35)');
+  if (h){ line(c.a.x, c.a.y, mx - ux * h, my - uy * h, 2.5, ink); line(mx + ux * h, my + uy * h, c.b.x, c.b.y, 2.5, ink); }
+  else line(c.a.x, c.a.y, c.b.x, c.b.y, 2.5, ink);
+  drawCharges(c, dt, L, ux, uy, 0);
+  ctx.save(); ctx.translate(mx, my); ctx.rotate(Math.atan2(uy, ux));
+  ctx.strokeStyle = ink; ctx.lineWidth = 2.5; ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+  const seg = (x1, y1, x2, y2) => { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
+  if (t === 'battery'){                              // each cell: short fat line (–) then long thin line (+)
+    if (c.off) ctx.strokeStyle = '#7c879f';
+    let x = -h;
+    for (let i = 0; i < cells; i++){
+      ctx.lineWidth = 5; seg(x, -9, x, 9);
+      ctx.lineWidth = 2.5; seg(x + 8, -18, x + 8, 18);
+      if (i < cells - 1) seg(x + 8, 0, x + 18, 0);
+      x += 18;
+    }
+    ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = ctx.strokeStyle;
+    ctx.fillText('–', -h - 9, -13); ctx.fillText('+', h + 9, -13);
+  } else if (t === 'bulb'){                          // circle with an X
+    const br = bulbBr(c);
+    if (br > 0.01){
+      const R = 16 + 90 * br, g = ctx.createRadialGradient(0, 0, 8, 0, 0, R);
+      g.addColorStop(0, `rgba(255,236,130,${Math.min(0.9, 0.15 + br)})`); g.addColorStop(1, 'rgba(255,236,130,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R, 0, 6.2832); ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(0, 0, 16, 0, 6.2832);
+    ctx.fillStyle = '#0f1b2d'; ctx.fill(); ctx.fillStyle = `rgba(255,222,90,${br})`; ctx.fill(); ctx.stroke();
+    seg(-11.3, -11.3, 11.3, 11.3); seg(-11.3, 11.3, 11.3, -11.3);
+  } else if (t === 'resistor'){                      // zig-zag
+    ctx.beginPath(); ctx.moveTo(-30, 0);
+    for (let i = 0; i < 6; i++) ctx.lineTo(-25 + i * 10, i % 2 ? 9 : -9);
+    ctx.lineTo(30, 0); ctx.stroke();
+  } else if (t === 'switch'){
+    ctx.lineCap = 'round';
+    if (c.closed) seg(-h, 0, h, 0); else seg(-h, 0, h * 0.8, -h * 0.9);
+    ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(-h, 0, 3.5, 0, 6.2832); ctx.arc(h, 0, 3.5, 0, 6.2832); ctx.fill();
+  } else if (t === 'fuse'){                          // box with the wire running through it
+    ctx.strokeRect(-h, -9, 2 * h, 18);
+    if (c.blown){ ctx.strokeStyle = '#ff6b6b'; seg(-h, 0, -6, 0); seg(6, 0, h, 0); seg(-5, -6, 5, 6); seg(-5, 6, 5, -6); }
+    else seg(-h, 0, h, 0);
+  }
+  ctx.restore();
+}
 function drawComp(c, dt){
   const L = len(c) || 1, ux = (c.b.x - c.a.x) / L, uy = (c.b.y - c.a.y) / L;
   const mx = (c.a.x + c.b.x) / 2, my = (c.a.y + c.b.y) / 2, h = HALF[c.type];
   const w = c.type === 'wire' ? 2 + c.thick * 1.3 : 6;
 
+  if (schematic){ drawSchem(c, dt, L, ux, uy, mx, my); drawLabels(c, mx, my); return; }
   if (c === sel) line(c.a.x, c.a.y, c.b.x, c.b.y, w + 10, 'rgba(255,216,102,.35)');
-  if (c.type === 'switch'){
+  if (c.type === 'switch' || c.type === 'fuse'){
     line(c.a.x, c.a.y, mx - ux * h, my - uy * h, w, '#c87533');
     line(mx + ux * h, my + uy * h, c.b.x, c.b.y, w, '#c87533');
   } else {
@@ -783,11 +895,26 @@ function drawComp(c, dt){
     ctx.stroke();
     ctx.fillStyle = '#dfe6f5';
     ctx.beginPath(); ctx.arc(-h, 0, 5, 0, 6.2832); ctx.arc(h, 0, 5, 0, 6.2832); ctx.fill();
+  } else if (c.type === 'fuse'){
+    // glass tube fuse: metal caps on the ends, thin wire inside that melts when too much current flows
+    ctx.fillStyle = c.blown ? 'rgba(60,50,45,.9)' : 'rgba(190,220,255,.25)'; ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(-h + 8, -9, 2 * h - 16, 18, 4); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = c.blown ? '#8a8f9b' : '#f2d08a'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath();
+    if (c.blown){ ctx.moveTo(-h + 10, 0); ctx.lineTo(-7, 3); ctx.moveTo(7, -3); ctx.lineTo(h - 10, 0); }
+    else { ctx.moveTo(-h + 10, 0); ctx.lineTo(h - 10, 0); }
+    ctx.stroke();
+    for (const x of [-h, h - 12]){
+      const mg = ctx.createLinearGradient(0, -11, 0, 11);
+      mg.addColorStop(0, '#70757f'); mg.addColorStop(0.35, '#e6e9ef'); mg.addColorStop(1, '#5d626c');
+      ctx.fillStyle = mg; ctx.beginPath(); ctx.roundRect(x, -11, 12, 22, 3); ctx.fill();
+    }
   }
   ctx.restore();
   if (c.type === 'bulb') drawCharges(c, dt, L, ux, uy, h);
-
-  // labels
+  drawLabels(c, mx, my);
+}
+function drawLabels(c, mx, my){
   const short = c.type === 'battery' && Math.abs(c.I) > 50;
   if (showAmps){                                     // ammeter reading on the other side from the value label
     const txt = `${fmt(Math.abs(c.I))} A`;
@@ -801,9 +928,10 @@ function drawComp(c, dt){
   if (c.type === 'battery'){
     const dead = drainOn && c.charge <= 0;
     const pct = drainOn ? `  ·  ${Math.round(c.charge * 100)}%` : '';
-    label(c, short ? `${c.V} V  SHORT!` : dead ? `${c.V} V  DEAD` : `${c.V} V${pct}`, short || dead ? '#ff6b6b' : null);
+    label(c, c.off ? `${c.V} V  ·  OFF` : short ? `${c.V} V  SHORT!` : dead ? `${c.V} V  DEAD` : `${c.V} V${pct}`, c.off ? '#9aa3b8' : short || dead ? '#ff6b6b' : null);
   }
   if (c.type === 'resistor') label(c, `${c.R} Ω`);
+  if (c.type === 'fuse') label(c, c.blown ? 'BLOWN' : `${c.rating} A fuse`, c.blown ? '#ff6b6b' : null);
   if (c.type === 'bulb'){                            // label goes under the base, away from the glass
     const u = bulbUp(c);
     ctx.font = '600 13px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -815,14 +943,19 @@ function drawGrid(){
   ctx.fillStyle = '#0f1b2d'; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let x = 0; x < W; x += 40){ ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-  for (let y = 0; y < H; y += 40){ ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  const g = 40 * view.z, x0 = ((view.ox % g) + g) % g, y0 = ((view.oy % g) + g) % g;   // grid moves and shrinks with the board
+  for (let x = x0; x < W; x += g){ ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+  for (let y = y0; y < H; y += g){ ctx.moveTo(0, y); ctx.lineTo(W, y); }
   ctx.stroke();
 }
 let last = performance.now();
 function frame(now){
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   solve();
+  let worst = null;                                  // a fuse blows when its current goes over its rating (weakest one first)
+  for (const c of comps) if (c.type === 'fuse' && !c.blown && Math.abs(c.I) > c.rating + 1e-6 &&
+    (!worst || Math.abs(c.I) / c.rating > Math.abs(worst.I) / worst.rating)) worst = c;
+  if (worst){ worst.blown = true; solve(); }
   if (drainOn) for (const c of comps)                // more current = the battery empties faster
     if (c.type === 'battery' && c.I > 0) c.charge = Math.max(0, c.charge - Math.min(c.I, 25) * dt / CAP);
   drawGrid();
@@ -833,17 +966,19 @@ function frame(now){
     ctx.font = '15px -apple-system,Helvetica,Arial';
     ctx.fillText('or press "Series example" / "Parallel example" to start with one', W / 2 + 40, H / 2 + 16);
   }
+  ctx.save(); ctx.translate(view.ox, view.oy); ctx.scale(view.z, view.z);     // everything below is drawn on the board
   for (const c of comps) drawComp(c, dt);
   for (const ep of endpoints()){
-    const on = ep.c === sel;
-    ctx.fillStyle = on ? '#ffd866' : '#e09a5a'; ctx.strokeStyle = '#0f1b2d'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(ep.p.x, ep.p.y, on ? 11 : 9, 0, 6.2832); ctx.fill(); ctx.stroke();
+    const on = ep.c === sel, r = schematic ? 5 : 9;
+    ctx.fillStyle = on ? '#ffd866' : schematic ? '#e8eefc' : '#e09a5a'; ctx.strokeStyle = '#0f1b2d'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(ep.p.x, ep.p.y, on ? r + 2 : r, 0, 6.2832); ctx.fill(); ctx.stroke();
   }
   if (drag && drag.snapT){                         // green ring = "these ends are connected"
     ctx.strokeStyle = '#5dff8f'; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.arc(drag.snapT.x, drag.snapT.y, 17, 0, 6.2832); ctx.stroke();
   }
   drawMeters();
+  ctx.restore();
   updateReadout();
   requestAnimationFrame(frame);
 }
