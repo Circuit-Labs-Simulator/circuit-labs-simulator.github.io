@@ -114,7 +114,7 @@
       <li><b>Move / reshape:</b> drag the middle to move a part, drag an end to stretch or turn it.</li>
       <li><b>Change it:</b> click a part to set its voltage, resistance, thickness or length. Its voltage, current and power show there too.</li>
       <li><b>Delete:</b> right-click the part, press Delete, or drag it back to the parts box. Ctrl/Cmd+Z undoes.</li>
-      <li><b>Switch:</b> double-click it to open or close it.</li>
+      <li><b>Switch:</b> click it to open or close it.</li>
       <li><b>Battery:</b> click it for the ON / OFF button (or double-click it) to turn it off without deleting it.</li>
       <li><b>Short circuit:</b> if a battery is joined end to end with only plain wire (nothing with resistance), the current is huge, so the battery catches fire and burns out after about 3 seconds. Click it to put in a new one. A fuse in the loop saves it.</li>
       <li><b>Fuse:</b> it blows (breaks the circuit) when the current goes above its rating. Click it to change the rating or put in a new fuse.</li>
@@ -458,6 +458,9 @@ addEventListener('pointerup', () => {
   if (!drag) return;
   if (drag.kind === 'meter' || drag.kind === 'pan'){ drag = null; cv.style.cursor = 'default'; return; }
   let placed = false;
+  if (drag.kind === 'body' && !drag.moved && !drag.fresh && drag.c.type === 'switch'){   // one click flips a switch
+    drag.c.closed = !drag.c.closed; showPanel();
+  }
   if (drag.fresh){
     // just clicked (or dropped it on the toolbar): put it in the middle of the board
     const c = drag.c;
@@ -496,8 +499,7 @@ addEventListener('pointerup', () => {
   placePanel();
   commit();
 });
-cv.addEventListener('dblclick', () => { if (sel && sel.type === 'switch'){ sel.closed = !sel.closed; showPanel(); commit(); }
-  else if (sel && sel.type === 'battery'){ sel.off = !sel.off; showPanel(); commit(); } });
+cv.addEventListener('dblclick', () => { if (sel && sel.type === 'battery'){ sel.off = !sel.off; showPanel(); commit(); } });
 cv.addEventListener('wheel', e => {                  // scroll (or pinch) = zoom where the mouse is
   e.preventDefault();
   zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)));
