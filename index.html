@@ -109,6 +109,7 @@
       <li><b>Delete:</b> right-click the part, press Delete, or drag it back to the parts box. Ctrl/Cmd+Z undoes.</li>
       <li><b>Switch:</b> double-click it to open or close it.</li>
       <li><b>Battery:</b> click it for the ON / OFF button (or double-click it) to turn it off without deleting it.</li>
+      <li><b>Short circuit:</b> if a battery is joined end to end with only plain wire (nothing with resistance), the current is huge, so the battery catches fire and burns out after about 3 seconds. Click it to put in a new one. A fuse in the loop saves it.</li>
       <li><b>Fuse:</b> it blows (breaks the circuit) when the current goes above its rating. Click it to change the rating or put in a new fuse.</li>
       <li><b>Schematic view</b> (top right): shows the same circuit as a diagram with the standard symbols. Press it again to go back.</li>
       <li><b>More space:</b> scroll or use − / + (bottom left) to zoom, drag the empty background to slide the board around, and press » to tuck the Circuit Lab box away.</li>
@@ -165,7 +166,7 @@ const TINY = 1e-3;          // "zero" resistance
 const SNAP = 24, PX_PER_CM = 10;
 
 function add(type, x1, y1, x2, y2){
-  const c = {type, a:{x:x1,y:y1}, b:{x:x2,y:y2}, phase:0, I:0, V:9, R:10, thick:4, closed:true, charge:1, rating:2, blown:false};
+  const c = {type, a:{x:x1,y:y1}, b:{x:x2,y:y2}, phase:0, I:0, V:9, R:10, thick:4, closed:true, charge:1, rating:2, blown:false, heat:0, burnt:false};
   comps.push(c); return c;
 }
 const len = c => Math.hypot(c.b.x - c.a.x, c.b.y - c.a.y);
@@ -175,7 +176,7 @@ function resistance(c){
     case 'bulb':
     case 'resistor':return c.R;
     case 'switch':  return c.closed ? TINY : Infinity;
-    case 'battery': return c.off ? Infinity : TINY;   // switched off = no path through it
+    case 'battery': return c.off || c.burnt ? Infinity : TINY;   // switched off = no path through it
     case 'fuse':    return c.blown ? Infinity : TINY;
   }
 }
@@ -504,12 +505,12 @@ function removeSel(){ const i = comps.indexOf(sel); if (i >= 0) comps.splice(i, 
 // ---------- undo + autosave ----------
 const undoStack = [];
 function snapshot(){
-  return JSON.stringify(comps.map(c => ({type:c.type, a:c.a, b:c.b, V:c.V, R:c.R, thick:c.thick, closed:c.closed, off:!!c.off, rating:c.rating, blown:!!c.blown})));
+  return JSON.stringify(comps.map(c => ({type:c.type, a:c.a, b:c.b, V:c.V, R:c.R, thick:c.thick, closed:c.closed, off:!!c.off, rating:c.rating, blown:!!c.blown, burnt:!!c.burnt})));
 }
 function restore(s){
   const list = JSON.parse(s);
   comps.length = 0; sel = null; showPanel();
-  for (const o of list) Object.assign(add(o.type, o.a.x, o.a.y, o.b.x, o.b.y), {V:o.V, R:o.R, thick:o.thick, closed:o.closed, off:!!o.off, rating:o.rating || 2, blown:!!o.blown});
+  for (const o of list) Object.assign(add(o.type, o.a.x, o.a.y, o.b.x, o.b.y), {V:o.V, R:o.R, thick:o.thick, closed:o.closed, off:!!o.off, rating:o.rating || 2, blown:!!o.blown, burnt:!!o.burnt});
 }
 function save(s){ try { localStorage.setItem('circuitLab', s); } catch (e) {} }
 function commit(){                                   // call after every finished change
@@ -557,7 +558,7 @@ function showPanel(){
   if (!sel){ p.hidden = true; return; }
   p.hidden = false;
   let h = `<h3>${NAMES[sel.type]}</h3>`;
-  if (sel.type === 'battery')  h += slider('V', 'Voltage', 0, 100, 1, 'V') + `<button id="onoff" style="width:100%;margin-bottom:6px">${sel.off ? '🟢 Turn battery ON' : '⭘ Turn battery OFF'}</button><button id="rech" style="width:100%">⚡ Recharge</button>`;
+  if (sel.type === 'battery')  h += slider('V', 'Voltage', 0, 100, 1, 'V') + `<button id="onoff" style="width:100%;margin-bottom:6px">${sel.off ? '🟢 Turn battery ON' : '⭘ Turn battery OFF'}</button><button id="rech" style="width:100%">⚡ Recharge</button>` + (sel.burnt ? `<button id="newBat" style="width:100%;margin-top:6px">🧯 Put in a new battery</button>` : '');
   if (sel.type === 'bulb')     h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
   if (sel.type === 'resistor') h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
   if (sel.type === 'wire')     h += slider('thick', 'Thickness', 1, 10, 0.5, '') +
@@ -582,6 +583,7 @@ function showPanel(){
   $('del').onclick = removeSel;
   if ($('rech')) $('rech').onclick = () => { sel.charge = 1; };
   if ($('onoff')) $('onoff').onclick = () => { sel.off = !sel.off; showPanel(); commit(); };
+  if ($('newBat')) $('newBat').onclick = () => { sel.burnt = false; sel.heat = 0; sel.charge = 1; showPanel(); commit(); };
   if ($('refuse')) $('refuse').onclick = () => { sel.blown = false; commit(); };
   placePanel();
   if ($('tog')) $('tog').onclick = () => { sel.closed = !sel.closed; showPanel(); commit(); };
@@ -632,8 +634,9 @@ function updateReadout(){
   }
   if (sel.type === 'wire' && wireRes) t += `<br>Voltage drop: ${fmt(Math.abs(sel.Vab || 0))} V`;
   if (sel.type === 'fuse') t += sel.blown ? `<br><span style="color:#ff6b6b">Blown! Too much current went through it.</span>` : `<br>Blows above ${sel.rating} A`;
-  if (sel.type === 'battery' && I > 50) t += `<br><span style="color:#ff6b6b">Short circuit!</span>`;
-  if (sel.type === 'battery' && drainOn){
+  if (sel.type === 'battery' && I > 50) t += `<br><span style="color:#ff6b6b">Short circuit! Nothing is slowing the current down, so the battery is catching fire.</span>`;
+  if (sel.type === 'battery' && sel.burnt) t += `<br><span style="color:#ff6b6b">Burnt out by a short circuit.</span>`;
+  if (sel.type === 'battery' && drainOn && !sel.burnt){
     t += `<br>Charge: ${Math.round(sel.charge * 100)}%`;
     if (sel.charge <= 0) t += ` <span style="color:#ff6b6b">(dead)</span>`;
     else if (sel.I > 0) t += `<br>Runs out in about ${Math.ceil(sel.charge * CAP / Math.min(sel.I, 25))} s`;
@@ -844,6 +847,7 @@ function drawComp(c, dt){
       ctx.fillStyle = q > 0.5 ? '#4cd964' : q > 0.2 ? '#ffcc00' : '#ff453a';
       if (q > 0){ ctx.beginPath(); ctx.roundRect(-bw / 2 + 1, -bh - 12, (bw - 2) * q, 6, 2); ctx.fill(); }
     }
+    if (c.burnt){ ctx.fillStyle = 'rgba(10,8,6,.75)'; ctx.beginPath(); ctx.roundRect(-h, -bh, 2 * h + 7, 2 * bh, 7); ctx.fill(); }   // charred
   } else if (c.type === 'bulb'){
     // real light bulb: screw base sitting on the wire, glass bulb with a filament standing up from it
     const br = bulbBr(c);
@@ -918,7 +922,33 @@ function drawComp(c, dt){
   if (c.type === 'bulb') drawCharges(c, dt, L, ux, uy, h);
   drawLabels(c, mx, my);
 }
+// flames while a battery is shorted, smoke after it has burnt out
+function drawFire(c, mx, my){
+  if (c.type !== 'battery') return;
+  const now = performance.now() / 1000;
+  if (c.burnt){
+    for (let i = 0; i < 4; i++){
+      const p = (now * 0.35 + i / 4) % 1;
+      ctx.fillStyle = `rgba(150,155,165,${0.35 * (1 - p)})`;
+      ctx.beginPath(); ctx.arc(mx + Math.sin(now + i * 2) * 8 + (i - 1.5) * 10, my - 22 - p * 70, 7 + p * 14, 0, 6.2832); ctx.fill();
+    }
+    return;
+  }
+  if (!(c.heat > 0)) return;
+  const k = Math.min(1, 0.35 + c.heat / 3), y0 = my + 8;       // the fire grows the longer the short lasts
+  for (let i = 0; i < 7; i++){
+    const x = mx + (i - 3) * 13, fl = 0.75 + 0.25 * Math.sin(now * 13 + i * 2.1), hgt = (40 + 16 * Math.sin(i * 1.9)) * k * fl, w = 11;
+    for (const [col, q] of [['#ff5a1f', 1], ['#ffb02e', 0.65], ['#fff3a6', 0.35]]){
+      ctx.fillStyle = col; ctx.beginPath();
+      ctx.moveTo(x - w * q, y0);
+      ctx.quadraticCurveTo(x - w * q, y0 - hgt * q * 0.6, x + Math.sin(now * 9 + i) * 4, y0 - hgt * q - 14 * q);
+      ctx.quadraticCurveTo(x + w * q, y0 - hgt * q * 0.6, x + w * q, y0);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+}
 function drawLabels(c, mx, my){
+  drawFire(c, mx, my);
   const short = c.type === 'battery' && Math.abs(c.I) > 50;
   if (showAmps){                                     // ammeter reading on the other side from the value label
     const txt = `${fmt(Math.abs(c.I))} A`;
@@ -932,7 +962,7 @@ function drawLabels(c, mx, my){
   if (c.type === 'battery'){
     const dead = drainOn && c.charge <= 0;
     const pct = drainOn ? `  ·  ${Math.round(c.charge * 100)}%` : '';
-    label(c, c.off ? `${c.V} V  ·  OFF` : short ? `${c.V} V  SHORT!` : dead ? `${c.V} V  DEAD` : `${c.V} V${pct}`, c.off ? '#9aa3b8' : short || dead ? '#ff6b6b' : null);
+    label(c, c.burnt ? 'BURNT OUT' : c.off ? `${c.V} V  ·  OFF` : short ? `${c.V} V  SHORT!` : dead ? `${c.V} V  DEAD` : `${c.V} V${pct}`, c.burnt ? '#ff6b6b' : c.off ? '#9aa3b8' : short || dead ? '#ff6b6b' : null);
   }
   if (c.type === 'resistor') label(c, `${c.R} Ω`);
   if (c.type === 'fuse') label(c, c.blown ? 'BLOWN' : `${c.rating} A fuse`, c.blown ? '#ff6b6b' : null);
@@ -960,6 +990,12 @@ function frame(now){
   for (const c of comps) if (c.type === 'fuse' && !c.blown && Math.abs(c.I) > c.rating + 1e-6 &&
     (!worst || Math.abs(c.I) / c.rating > Math.abs(worst.I) / worst.rating)) worst = c;
   if (worst){ worst.blown = true; solve(); }
+  for (const c of comps) if (c.type === 'battery'){  // short circuit (nothing to slow the current down): it catches fire, then burns out
+    if (!c.burnt && Math.abs(c.I) > 50){
+      c.heat += dt;
+      if (c.heat > 3){ c.burnt = true; c.heat = 0; c.charge = 0; if (sel === c) showPanel(); }
+    } else c.heat = Math.max(0, c.heat - dt * 2);
+  }
   if (drainOn) for (const c of comps)                // more current = the battery empties faster
     if (c.type === 'battery' && c.I > 0) c.charge = Math.max(0, c.charge - Math.min(c.I, 25) * dt / CAP);
   drawGrid();
