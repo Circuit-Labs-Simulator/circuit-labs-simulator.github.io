@@ -116,7 +116,7 @@
       <li><b>Series vs Parallel:</b> press that example to see both side by side. The series bulbs are dimmer (they share the voltage). The parallel bulbs are brighter, but the battery gives twice the current, so its charge bar empties faster.</li>
       <li><b>Meters</b> (top right): turn one on, then drag it and its probes.
         <b>Ammeter</b>: hold the ring over any part to read its current.
-        <b>Voltmeter</b>: touch the red and black probes to two spots to read the voltage between them.
+        <b>Voltmeter</b>: touch the red (–) and black (+) probes to two spots to read the voltage between them.
         <b>Ohmmeter</b>: touch its two probes to two spots to read the resistance between them (it ignores the batteries, like measuring with the power off).</li>
       <li><b>Electrons vs conventional:</b> electrons (blue –) really flow from – to +. Conventional current (red arrows) is drawn from + to –.</li>
     </ul>
@@ -284,7 +284,7 @@ function meterText(k){
   if (!t1 || !t2) return k === 'volt' ? '? V' : '? Ω';
   if (k === 'volt'){
     if (probeIsl(t1) !== probeIsl(t2)) return '0.00 V';
-    const v = probeV(t1) - probeV(t2);
+    const v = probeV(t2) - probeV(t1);          // black probe is +, red probe is – (Rishik's choice)
     return (Math.abs(v) < 0.005 ? 0 : v).toFixed(2) + ' V';
   }
   const R = eqR(probeNode(t1), probeNode(t2));
@@ -327,9 +327,9 @@ function drawMeters(){
         line(p.x, p.y - 12, p.x, p.y - 44, 10, p.col);
         ctx.lineCap = 'butt'; ctx.strokeStyle = '#c9ccd4'; ctx.lineWidth = 3.5;
         ctx.beginPath(); ctx.moveTo(p.x, p.y - 12); ctx.lineTo(p.x, p.y + 1); ctx.stroke();   // metal tip
-        if (k === 'volt'){                              // red is the + probe, black is the – probe
+        if (k === 'volt'){                              // black is the + probe, red is the – probe
           ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText(i ? '–' : '+', p.x, p.y - 30);
+          ctx.fillText(i ? '+' : '–', p.x, p.y - 30);
         }
       });
     }
