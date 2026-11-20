@@ -36,7 +36,7 @@
   #panel button{padding:4px 6px;font-size:12px}
   #panel .row{display:flex;gap:5px;margin:4px 0}
   #panel .row button{flex:1}
-  #panel #pClose{padding:0 7px;font-size:14px;line-height:20px}
+  #panel #pClose,#panel #del{padding:0 6px;font-size:13px;line-height:20px;width:auto}
   #panel #read{margin:5px 0;font-size:12px;line-height:1.35}
   #panel p{margin:2px 0;font-size:11.5px}
   label{display:block;margin:8px 0}
@@ -112,10 +112,10 @@
       <li><b>Add a part:</b> drag it out of the box on the left (or just click it).</li>
       <li><b>Connect:</b> drag an end dot near another end. They snap together and a green ring shows up.</li>
       <li><b>Move / reshape:</b> drag the middle to move a part, drag an end to stretch or turn it.</li>
-      <li><b>Change it:</b> click a part to set its voltage, resistance, thickness or length. Its voltage, current and power show there too.</li>
+      <li><b>Change it:</b> click a part to set its voltage, resistance or thickness. To see current and voltage, use the meters or tick “Amps on every part”.</li>
       <li><b>Delete:</b> right-click the part, press Delete, or drag it back to the parts box. Ctrl/Cmd+Z undoes.</li>
       <li><b>Switch:</b> click it to open or close it.</li>
-      <li><b>Battery:</b> click it for the ON / OFF button (or double-click it) to turn it off without deleting it.</li>
+      <li><b>Battery:</b> double-click it to turn it off or back on without deleting it.</li>
       <li><b>Short circuit:</b> if a battery is joined end to end with only plain wire (nothing with resistance), the current is huge, so the battery catches fire and burns out after about 3 seconds. Click it to put in a new one. A fuse in the loop saves it.</li>
       <li><b>Fuse:</b> it blows (breaks the circuit) when the current goes above its rating. Click it to change the rating or put in a new fuse.</li>
       <li><b>Schematic view</b> (top right): shows the same circuit as a diagram with the standard symbols. Press it again to go back.</li>
@@ -459,7 +459,7 @@ addEventListener('pointerup', () => {
   if (drag.kind === 'meter' || drag.kind === 'pan'){ drag = null; cv.style.cursor = 'default'; return; }
   let placed = false;
   if (drag.kind === 'body' && !drag.moved && !drag.fresh && drag.c.type === 'switch'){   // one click flips a switch
-    drag.c.closed = !drag.c.closed; showPanel();
+    drag.c.closed = !drag.c.closed;
   }
   if (drag.fresh){
     // just clicked (or dropped it on the toolbar): put it in the middle of the board
@@ -564,39 +564,25 @@ function slider(key, label, min, max, step, unit){
 }
 function showPanel(){
   const p = $('panel');
-  if (!sel){ p.hidden = true; return; }
+  if (!sel || sel.type === 'switch'){ p.hidden = true; return; }      // a switch has nothing to set: clicking it flips it
   p.hidden = false;
-  let h = `<h3><span>${NAMES[sel.type]}</span><button id="pClose" title="Close">×</button></h3>`;
-  if (sel.type === 'battery')  h += slider('V', 'Voltage', 0, 100, 1, 'V') + `<div class="row"><button id="onoff">${sel.off ? 'Turn ON' : 'Turn OFF'}</button><button id="rech">Recharge</button></div>` + (sel.burnt ? `<button id="newBat" style="width:100%">🧯 New battery</button>` : '');
+  // just the one thing you can change, plus a tiny bin and a close button
+  let h = `<h3><span>${NAMES[sel.type]}</span><span><button id="del" title="Delete this part">🗑</button> <button id="pClose" title="Close">×</button></span></h3>`;
+  if (sel.type === 'battery')  h += slider('V', 'Voltage', 0, 100, 1, 'V') + (sel.burnt ? `<button id="newBat" style="width:100%">🧯 New battery</button>` : '');
   if (sel.type === 'bulb')     h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
   if (sel.type === 'resistor') h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
-  if (sel.type === 'wire')     h += slider('thick', 'Thickness', 1, 10, 0.5, '') +
-                                    (wireRes ? '' : '<p>Turn on <b>Wire Resistance</b> to make thickness and length matter.</p>');
+  if (sel.type === 'wire')     h += slider('thick', 'Thickness', 1, 10, 0.5, '');
   if (sel.type === 'fuse')     h += slider('rating', 'Blows above', 0.5, 20, 0.5, 'A') + `<button id="refuse" style="width:100%">🔧 New fuse</button>`;
-  if (sel.type === 'switch')   h += `<button id="tog" style="width:100%">${sel.closed ? 'Open switch' : 'Close switch'}</button>`;
-  h += `<label>Length: <b id="lenV">${(len(sel) / PX_PER_CM).toFixed(0)}</b> cm
-    <input id="lenS" type="range" min="40" max="800" step="10" value="${Math.round(len(sel))}"></label>`;
-  h += `<div id="read"></div><button id="del">🗑 Delete</button>`;
   p.innerHTML = h;
   p.querySelectorAll('input[data-k]').forEach(el => {
     el.oninput = () => { sel[el.dataset.k] = +el.value; $('v_' + el.dataset.k).textContent = el.value; };
     el.onchange = commit;
   });
-  $('lenS').onchange = commit;
-  $('lenS').oninput = e => {                 // make the part longer / shorter
-    const c = sel, L0 = len(c) || 1, L = +e.target.value;
-    const ux = (c.b.x - c.a.x) / L0, uy = (c.b.y - c.a.y) / L0;
-    c.b = {x: c.a.x + ux * L, y: c.a.y + uy * L};
-    $('lenV').textContent = (L / PX_PER_CM).toFixed(0);
-  };
   $('del').onclick = removeSel;
   $('pClose').onclick = () => select(null);
-  if ($('rech')) $('rech').onclick = () => { sel.charge = 1; };
-  if ($('onoff')) $('onoff').onclick = () => { sel.off = !sel.off; showPanel(); commit(); };
   if ($('newBat')) $('newBat').onclick = () => { sel.burnt = false; sel.heat = 0; sel.charge = 1; showPanel(); commit(); };
   if ($('refuse')) $('refuse').onclick = () => { sel.blown = false; commit(); };
   placePanel();
-  if ($('tog')) $('tog').onclick = () => { sel.closed = !sel.closed; showPanel(); commit(); };
 }
 // the change-box pops up right next to the part you clicked
 function placePanel(){
@@ -994,7 +980,7 @@ function drawGrid(){
 }
 let last = performance.now();
 function frame(now){
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
   solve();
   let worst = null;                                  // a fuse blows when its current goes over its rating (weakest one first)
   for (const c of comps) if (c.type === 'fuse' && !c.blown && Math.abs(c.I) > c.rating + 1e-6 &&
