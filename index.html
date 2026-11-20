@@ -92,6 +92,7 @@
   <label class="sub"><input type="radio" name="ct" id="rC"> Conventional</label>
   <label><input type="checkbox" id="chkVal" checked> Values (V and Ω)</label>
   <label><input type="checkbox" id="chkAmp"> Amps on every part</label>
+  <label><input type="checkbox" id="chkVolt"> Volts on bulbs + resistors</label>
   <label><input type="checkbox" id="chkDrain" checked> Batteries run down</label>
   <button id="rechAll">🔋 Recharge all batteries</button>
   <div class="hd">Meters (drag them)</div>
@@ -121,6 +122,7 @@
       <li><b>Schematic view</b> (top right): shows the same circuit as a diagram with the standard symbols. Press it again to go back.</li>
       <li><b>More space:</b> scroll or use − / + (bottom left) to zoom, drag the empty background to slide the board around, and press » to tuck the Circuit Lab box away.</li>
       <li><b>Wire Resistance</b> (top left): when it is ON, longer and thinner wires have more resistance, so the current drops and the electrons slow down.</li>
+      <li><b>Amps and volts:</b> tick “Amps on every part” and “Volts on bulbs + resistors” (the examples turn them on). In series the amps are the same everywhere and the volts are split between the bulbs. In parallel every branch gets the full volts and the amps split between the branches.</li>
       <li><b>Series vs Parallel:</b> press that example to see both side by side. The series bulbs are dimmer (they share the voltage). The parallel bulbs are brighter, but the battery gives twice the current, so its charge bar empties faster.</li>
       <li><b>Meters</b> (top right): turn one on, then drag it and its probes.
         <b>Ammeter</b>: hold the ring over any part to read its current.
@@ -162,14 +164,14 @@ let schematic = false;
 // ---------- circuit data ----------
 const comps = [];
 let sel = null, wireRes = false, rho = 0.5;
-let showCurrent = true, conventional = false, showValues = true, showAmps = false;
+let showCurrent = true, conventional = false, showValues = true, showAmps = false, showVolts = false;
 let drainOn = true;                 // batteries lose charge while they push current
 const CAP = 120;                    // battery size in amp-seconds (0.9 A lasts about 2 minutes)
 let nodeCount = 0;
 const emf = c => c.V * (drainOn ? Math.min(1, c.charge / 0.15) : 1);   // voltage sags when nearly empty
 const NAMES = {wire:'Wire', battery:'Battery', bulb:'Light Bulb', resistor:'Resistor', switch:'Switch', fuse:'Fuse'};
 const HALF = {wire:0, battery:50, bulb:12, resistor:36, switch:26, fuse:30};   // half-length of the drawn body
-const TINY = 1e-3;          // "zero" resistance
+const TINY = 1e-4;          // "zero" resistance
 const SNAP = 24, PX_PER_CM = 10;
 
 function add(type, x1, y1, x2, y2){
@@ -554,6 +556,7 @@ function example(kind){
   if (kind === 'series') seriesAt(cx, cy, 220);
   else if (kind === 'parallel') parallelAt(cx, cy, 220);
   else { seriesAt(cx - 195, cy, 150); parallelAt(cx + 195, cy, 150); }   // side by side to compare
+  showAmps = showVolts = $('chkAmp').checked = $('chkVolt').checked = true;   // so you can see how the amps and volts share out
   commit();
 }
 
@@ -685,6 +688,7 @@ $('exParallel').onclick = () => example('parallel');
 $('chkCur').onchange = e => { showCurrent = e.target.checked; };
 $('chkVal').onchange = e => { showValues = e.target.checked; };
 $('chkAmp').onchange = e => { showAmps = e.target.checked; };
+$('chkVolt').onchange = e => { showVolts = e.target.checked; };
 $('rE').onchange = $('rC').onchange = () => { conventional = $('rC').checked; };
 $('helpBtn').onclick = () => { $('help').hidden = false; };
 $('helpClose').onclick = () => { $('help').hidden = true; };
@@ -947,8 +951,9 @@ function drawFire(c, mx, my){
 function drawLabels(c, mx, my){
   drawFire(c, mx, my);
   const short = c.type === 'battery' && Math.abs(c.I) > 50;
-  if (showAmps){                                     // ammeter reading on the other side from the value label
-    const txt = `${fmt(Math.abs(c.I))} A`;
+  const lv = showVolts && (c.type === 'bulb' || c.type === 'resistor');   // volts used up across this part
+  if (showAmps || lv){                               // readings go on the other side from the value label
+    const txt = [showAmps ? `${fmt(Math.abs(c.I))} A` : '', lv ? `${fmt(Math.abs(c.Vab || 0))} V` : ''].filter(Boolean).join('  ·  ');
     if (c.type === 'bulb'){
       const u = bulbUp(c);
       ctx.font = '600 13px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
