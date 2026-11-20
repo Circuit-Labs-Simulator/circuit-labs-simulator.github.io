@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Circuit Lab</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0f1b2d;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#e8eefc}
+  canvas{display:block;position:absolute;left:0;top:0;width:100vw;height:100vh;cursor:default;touch-action:none}
+  button{font:inherit;font-weight:600;color:#e8eefc;background:#24365a;border:1px solid #3d5690;border-radius:8px;padding:8px 12px;cursor:pointer}
+  button:hover{background:#2f4675}
+  #topleft{position:absolute;top:12px;left:12px;width:250px}
+  #wrBtn{width:100%;background:#5a2424;border-color:#904040}
+  #wrBtn.on{background:#1f6b3a;border-color:#39a862}
+  .card{background:rgba(20,32,56,.95);border:1px solid #3d5690;border-radius:10px;padding:12px;margin-top:8px;font-size:14px}
+  .card p{margin:6px 0 0;color:#a9b8d8;font-size:12.5px;line-height:1.4}
+  #toolbar{display:flex;flex-direction:column;gap:8px;width:175px}
+  #toolbar hr{width:100%;border:0;border-top:1px solid #3d5690;margin:4px 0}
+  #view{position:absolute;top:12px;right:12px;width:190px;margin:0;z-index:5}
+  #view h3{margin:0 0 6px;font-size:17px}
+  #view label{margin:6px 0;cursor:pointer}
+  #view label.sub{margin-left:22px;color:#c5d1ec}
+  #view button{width:100%;margin-top:6px;padding:6px 10px}
+  #view button.on{background:#1f6b3a;border-color:#39a862}
+  #view .hd{margin-top:10px;font-weight:700;color:#a9b8d8;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+  #toolbar button{padding:6px 10px}
+  #help{position:absolute;inset:0;background:rgba(5,10,20,.75);z-index:20;display:flex;align-items:center;justify-content:center}
+  #help[hidden]{display:none}
+  #help .card{max-width:520px;font-size:15px;line-height:1.5}
+  #help li{margin:5px 0}
+  #toolbar button{touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;text-align:left}
+  #clear{background:#5a2424;border-color:#904040;margin-top:6px}
+  #topleft,#panel{z-index:5}
+  #panel{position:absolute;top:12px;right:12px;width:230px;margin:0}
+  #panel h3{margin:0 0 8px}
+  label{display:block;margin:8px 0}
+  input[type=range]{width:100%;margin-top:4px}
+  #read{margin:10px 0;color:#ffd866;font-size:13.5px;line-height:1.5}
+  #del{background:#5a2424;border-color:#904040;width:100%}
+  #hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:12.5px;color:#8fa3cc;white-space:nowrap}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="topleft">
+  <button id="wrBtn">Wire Resistance: OFF</button>
+  <div id="wrPanel" class="card" hidden>
+    <label>Wire material: <b id="rhoV">0.5</b> Ω per cm
+      <input id="rho" type="range" min="0.05" max="3" step="0.05" value="0.5">
+    </label>
+    <p>Longer wire = more resistance = slower electrons.<br>
+       Thicker wire = less resistance = faster electrons.<br>
+       Click a wire to change its thickness. Drag its ends to change its length.</p>
+  </div>
+  <div id="toolbar" class="card">
+    <button data-add="wire">〰️ Wire</button>
+    <button data-add="battery">🔋 Battery</button>
+    <button data-add="bulb">💡 Light Bulb</button>
+    <button data-add="resistor">▭ Resistor</button>
+    <button data-add="switch">⏻ Switch</button>
+    <hr>
+    <button id="exSeries">⚡ Series example</button>
+    <button id="exParallel">⚡ Parallel example</button>
+    <button id="exBoth">⚡ Series vs Parallel</button>
+    <button id="undo">↩ Undo</button>
+    <button id="clear">🗑 Clear all</button>
+  </div>
+</div>
+
+<div id="view" class="card">
+  <h3>⚡ Circuit Lab</h3>
+  <label><input type="checkbox" id="chkCur" checked> Show current</label>
+  <label class="sub"><input type="radio" name="ct" id="rE" checked> Electrons</label>
+  <label class="sub"><input type="radio" name="ct" id="rC"> Conventional</label>
+  <label><input type="checkbox" id="chkVal" checked> Values (V and Ω)</label>
+  <label><input type="checkbox" id="chkAmp"> Amps on every part</label>
+  <label><input type="checkbox" id="chkDrain" checked> Batteries run down</label>
+  <button id="rechAll">🔋 Recharge all batteries</button>
+  <div class="hd">Meters (drag them)</div>
+  <button id="mAmm">Ammeter</button>
+  <button id="mVolt">Voltmeter</button>
+  <button id="mOhm">Ohmmeter</button>
+  <button id="helpBtn">❓ How to use</button>
+</div>
+
+<div id="help" hidden>
+  <div class="card">
+    <h3 style="margin:0 0 6px">How to use Circuit Lab</h3>
+    <ul style="margin:0;padding-left:20px">
+      <li><b>Add a part:</b> drag it out of the box on the left (or just click it).</li>
+      <li><b>Connect:</b> drag an end dot near another end. They snap together and a green ring shows up.</li>
+      <li><b>Move / reshape:</b> drag the middle to move a part, drag an end to stretch or turn it.</li>
+      <li><b>Change it:</b> click a part to set its voltage, resistance, thickness or length. Its voltage, current and power show there too.</li>
+      <li><b>Delete:</b> right-click the part, press Delete, or drag it back to the parts box. Ctrl/Cmd+Z undoes.</li>
+      <li><b>Switch:</b> double-click it to open or close it.</li>
+      <li><b>Wire Resistance</b> (top left): when it is ON, longer and thinner wires have more resistance, so the current drops and the electrons slow down.</li>
+      <li><b>Series vs Parallel:</b> press that example to see both side by side. The series bulbs are dimmer (they share the voltage). The parallel bulbs are brighter, but the battery gives twice the current, so its charge bar empties faster.</li>
+      <li><b>Meters</b> (top right): turn one on, then drag it and its probes.
+        <b>Ammeter</b>: hold the ring over any part to read its current.
+        <b>Voltmeter</b>: touch the red and black probes to two spots to read the voltage between them.
+        <b>Ohmmeter</b>: touch its two probes to two spots to read the resistance between them (it ignores the batteries, like measuring with the power off).</li>
+      <li><b>Electrons vs conventional:</b> electrons (blue –) really flow from – to +. Conventional current (red arrows) is drawn from + to –.</li>
+    </ul>
+    <button id="helpClose" style="margin-top:12px;width:100%">Got it</button>
+  </div>
+</div>
+
+<div id="panel" class="card" hidden></div>
+<div id="hint">Drag a part out of the box on the left · drag an end dot to move it and connect it (green ring = connected) · click a part to change it · to delete: right-click it, press Delete, or drag it back to the box</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const cv = $('c'), ctx = cv.getContext('2d');
+let W = 0, H = 0;
+function resize(){
+  const d = window.devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * d; cv.height = H * d;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+// ---------- circuit data ----------
+const comps = [];
+let sel = null, wireRes = false, rho = 0.5;
+let showCurrent = true, conventional = false, showValues = true, showAmps = false;
+let drainOn = true;                 // batteries lose charge while they push current
+const CAP = 120;                    // battery size in amp-seconds (0.9 A lasts about 2 minutes)
+let nodeCount = 0;
+const emf = c => c.V * (drainOn ? Math.min(1, c.charge / 0.15) : 1);   // voltage sags when nearly empty
+const NAMES = {wire:'Wire', battery:'Battery', bulb:'Light Bulb', resistor:'Resistor', switch:'Switch'};
+const HALF = {wire:0, battery:50, bulb:12, resistor:36, switch:26};   // half-length of the drawn body
+const TINY = 1e-3;          // "zero" resistance
+const SNAP = 24, PX_PER_CM = 10;
+
+function add(type, x1, y1, x2, y2){
+  const c = {type, a:{x:x1,y:y1}, b:{x:x2,y:y2}, phase:0, I:0, V:9, R:10, thick:4, closed:true, charge:1};
+  comps.push(c); return c;
+}
+const len = c => Math.hypot(c.b.x - c.a.x, c.b.y - c.a.y);
+function resistance(c){
+  switch(c.type){
+    case 'wire':    return wireRes ? Math.max(TINY, rho * (len(c) / PX_PER_CM) / c.thick) : TINY;
+    case 'bulb':
+    case 'resistor':return c.R;
+    case 'switch':  return c.closed ? TINY : Infinity;
+    case 'battery': return TINY;
+  }
+}
+
+// ---------- solver (nodal analysis) ----------
+function solve(){
+  const pts = [];
+  const idOf = p => {
+    for (let i = 0; i < pts.length; i++)
+      if (Math.abs(pts[i].x - p.x) < 1 && Math.abs(pts[i].y - p.y) < 1) return i;
+    pts.push(p); return pts.length - 1;
+  };
+  for (const c of comps){ c.na = idOf(c.a); c.nb = idOf(c.b); }
+  const n = nodeCount = pts.length;
+  if (!n) return;
+  const G = Array.from({length:n}, () => new Float64Array(n + 1));
+  for (let i = 0; i < n; i++) G[i][i] = 1e-8;        // tiny leak so nothing floats
+  const par = Array.from({length:n}, (_, i) => i);   // which points are wired together (islands)
+  const find = i => { while (par[i] !== i){ par[i] = par[par[i]]; i = par[i]; } return i; };
+  for (const c of comps){
+    const R = resistance(c);
+    if (!isFinite(R) || c.na === c.nb) continue;
+    const g = 1 / R, a = c.na, b = c.nb;
+    G[a][a] += g; G[b][b] += g; G[a][b] -= g; G[b][a] -= g;
+    if (c.type === 'battery'){ G[b][n] += emf(c) * g; G[a][n] -= emf(c) * g; }
+    par[find(a)] = find(b);
+  }
+  const v = gauss(G, n);
+  for (const c of comps){
+    const R = resistance(c);
+    let I = 0;
+    if (isFinite(R) && c.na !== c.nb){
+      I = (v[c.na] - v[c.nb] + (c.type === 'battery' ? emf(c) : 0)) / R;
+    }
+    c.I = Math.abs(I) < 1e-4 ? 0 : I;     // current flowing a -> b
+    c.Vab = c.na !== c.nb ? v[c.na] - v[c.nb] : 0;   // voltage across the part
+    c.va = v[c.na]; c.vb = v[c.nb]; c.ia = find(c.na); c.ib = find(c.nb);
+  }
+}
+function gauss(G, n){                                // solves the equations, returns the voltage of every point
+  for (let i = 0; i < n; i++){
+    let p = i;
+    for (let r = i + 1; r < n; r++) if (Math.abs(G[r][i]) > Math.abs(G[p][i])) p = r;
+    const t = G[i]; G[i] = G[p]; G[p] = t;
+    const d = G[i][i];
+    if (Math.abs(d) < 1e-14) continue;
+    for (let r = i + 1; r < n; r++){
+      const f = G[r][i] / d;
+      if (f) for (let k = i; k <= n; k++) G[r][k] -= f * G[i][k];
+    }
+  }
+  const v = new Float64Array(n);
+  for (let i = n - 1; i >= 0; i--){
+    let s = G[i][n];
+    for (let k = i + 1; k < n; k++) s -= G[i][k] * v[k];
+    v[i] = Math.abs(G[i][i]) < 1e-14 ? 0 : s / G[i][i];
+  }
+  return v;
+}
+// resistance between two points with the batteries taken out (what an ohmmeter reads)
+function eqR(p, q){
+  if (p === q) return 0;
+  const n = nodeCount, G = Array.from({length:n}, () => new Float64Array(n + 1));
+  for (let i = 0; i < n; i++) G[i][i] = 1e-9;
+  for (const c of comps){
+    if (c.type === 'battery') continue;
+    const R = resistance(c);
+    if (!isFinite(R) || c.na === c.nb) continue;
+    const g = 1 / R, a = c.na, b = c.nb;
+    G[a][a] += g; G[b][b] += g; G[a][b] -= g; G[b][a] -= g;
+  }
+  G[p][n] = 1; G[q][n] = -1;                         // push 1 amp through and see the voltage
+  const v = gauss(G, n);
+  return v[p] - v[q];
+}
+
+// ---------- meters ----------
+const MW = 124, MH = 66;
+const meters = {
+  amm:  {on:false, name:'AMMETER',   col:'#1f7a55', x:0, y:0, probes:[{x:0, y:0}]},
+  volt: {on:false, name:'VOLTMETER', col:'#2f55b0', x:0, y:0, probes:[{x:0, y:0, col:'#e5484d'}, {x:0, y:0, col:'#1b1d22'}]},
+  ohm:  {on:false, name:'OHMMETER',  col:'#a8601c', x:0, y:0, probes:[{x:0, y:0, col:'#f5a524'}, {x:0, y:0, col:'#f5a524'}]}
+};
+function toggleMeter(k, i, btn){
+  const m = meters[k]; m.on = !m.on; btn.classList.toggle('on', m.on);
+  if (!m.on) return;
+  m.x = W - 300; m.y = 90 + i * 160;
+  if (k === 'amm'){ m.probes[0].x = m.x - 120; m.probes[0].y = m.y + 40; }
+  else { m.probes[0].x = m.x - 40; m.probes[0].y = m.y + 110; m.probes[1].x = m.x + 10; m.probes[1].y = m.y + 110; }
+}
+function touchAt(x, y, reach){                       // which part is a probe touching, and where along it
+  let best = null, bd = reach || 13;
+  for (const c of comps){ const d = distSeg(x, y, c.a, c.b); if (d < bd){ bd = d; best = c; } }
+  if (!best) return null;
+  const dx = best.b.x - best.a.x, dy = best.b.y - best.a.y, L2 = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((x - best.a.x) * dx + (y - best.a.y) * dy) / L2));
+  return {c: best, t};
+}
+const probeV    = tc => tc.c.type === 'wire' ? tc.c.va + (tc.c.vb - tc.c.va) * tc.t : (tc.t < 0.5 ? tc.c.va : tc.c.vb);
+const probeNode = tc => tc.t < 0.5 ? tc.c.na : tc.c.nb;
+const probeIsl  = tc => tc.t < 0.5 ? tc.c.ia : tc.c.ib;
+function meterText(k){
+  const m = meters[k];
+  if (k === 'amm'){ const tc = touchAt(m.probes[0].x, m.probes[0].y, 20); return tc ? fmt(Math.abs(tc.c.I)) + ' A' : '? A'; }
+  const t1 = touchAt(m.probes[0].x, m.probes[0].y), t2 = touchAt(m.probes[1].x, m.probes[1].y);
+  if (!t1 || !t2) return k === 'volt' ? '? V' : '? Ω';
+  if (k === 'volt'){
+    if (probeIsl(t1) !== probeIsl(t2)) return '0.00 V';
+    const v = probeV(t1) - probeV(t2);
+    return (Math.abs(v) < 0.005 ? 0 : v).toFixed(2) + ' V';
+  }
+  const R = eqR(probeNode(t1), probeNode(t2));
+  return R > 1e6 ? '∞ Ω' : fmt(Math.max(0, R)) + ' Ω';
+}
+function meterHit(x, y){
+  for (const k of ['ohm', 'volt', 'amm']){
+    const m = meters[k]; if (!m.on) continue;
+    for (const p of m.probes){
+      const hit = k === 'amm' ? Math.hypot(x - p.x, y - p.y) < 22 : distSeg(x, y, p, {x: p.x, y: p.y - 44}) < 13;
+      if (hit) return {m, probe: p};
+    }
+    if (Math.abs(x - m.x) < MW / 2 && Math.abs(y - m.y) < MH / 2) return {m, probe: null};
+  }
+  return null;
+}
+function cable(x1, y1, x2, y2, col){                 // droopy lead from a probe to its meter
+  ctx.lineCap = 'round';
+  for (const [w, c] of [[6, 'rgba(223,230,245,.55)'], [3.5, col]]){
+    ctx.strokeStyle = c; ctx.lineWidth = w;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.bezierCurveTo(x1, y1 - 50, x2, y2 + 70, x2, y2); ctx.stroke();
+  }
+}
+function drawMeters(){
+  for (const k of ['amm', 'volt', 'ohm']){
+    const m = meters[k]; if (!m.on) continue;
+    const by = m.y + MH / 2 - 4;
+    if (k === 'amm'){
+      const p = m.probes[0];
+      cable(p.x + 14, p.y - 14, m.x - 30, by, '#1b1d22');
+      ctx.strokeStyle = '#1b1d22'; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, 6.2832); ctx.stroke();
+      ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, 6.2832); ctx.stroke();
+      ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.moveTo(p.x - 13, p.y); ctx.lineTo(p.x - 5, p.y); ctx.moveTo(p.x + 5, p.y); ctx.lineTo(p.x + 13, p.y);
+      ctx.moveTo(p.x, p.y - 13); ctx.lineTo(p.x, p.y - 5); ctx.moveTo(p.x, p.y + 5); ctx.lineTo(p.x, p.y + 13); ctx.stroke();
+    } else {
+      m.probes.forEach((p, i) => {
+        cable(p.x, p.y - 44, m.x + (i ? 30 : -30), by, p.col);
+        line(p.x, p.y - 12, p.x, p.y - 44, 13, '#dfe6f5');           // handle (light outline so black shows up)
+        line(p.x, p.y - 12, p.x, p.y - 44, 10, p.col);
+        ctx.lineCap = 'butt'; ctx.strokeStyle = '#c9ccd4'; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y - 12); ctx.lineTo(p.x, p.y + 1); ctx.stroke();   // metal tip
+      });
+    }
+    ctx.fillStyle = m.col; ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(m.x - MW / 2, m.y - MH / 2, MW, MH, 10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = '700 11px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(m.name, m.x, m.y - MH / 2 + 12);
+    ctx.fillStyle = '#0b1220'; ctx.beginPath(); ctx.roundRect(m.x - MW / 2 + 10, m.y - 12, MW - 20, 32, 5); ctx.fill();
+    ctx.fillStyle = '#ffe27a'; ctx.font = '700 18px Menlo,Consolas,monospace';
+    ctx.fillText(meterText(k), m.x, m.y + 5);
+  }
+}
+
+// ---------- mouse ----------
+let drag = null;
+function endpoints(){ const out = []; for (const c of comps){ out.push({c, p:c.a}); out.push({c, p:c.b}); } return out; }
+function distSeg(px, py, a, b){
+  const dx = b.x - a.x, dy = b.y - a.y, L2 = dx*dx + dy*dy || 1;
+  let t = ((px - a.x) * dx + (py - a.y) * dy) / L2; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (a.x + t*dx), py - (a.y + t*dy));
+}
+cv.addEventListener('pointerdown', e => {
+  const x = e.clientX, y = e.clientY;
+  const mh = meterHit(x, y);                         // meters sit on top, so they get grabbed first
+  if (mh){ drag = {kind:'meter', m:mh.m, probe:mh.probe, lx:x, ly:y, moved:false}; return; }
+  // endpoint?
+  let hit = null;
+  for (const ep of endpoints().reverse())
+    if (Math.hypot(ep.p.x - x, ep.p.y - y) < 20){ hit = ep; break; }
+  if (hit){
+    const group = endpoints().filter(ep => Math.abs(ep.p.x - hit.p.x) < 1 && Math.abs(ep.p.y - hit.p.y) < 1).map(ep => ep.p);
+    // every part reshapes freely: the end you grab goes wherever you drag it, the other end stays put
+    const ignore = group.slice();
+    for (const c of comps){
+      const ina = group.includes(c.a), inb = group.includes(c.b);
+      if (ina !== inb) ignore.push(ina ? c.b : c.a);
+    }
+    drag = {kind:'pt', pts:group, ignore, moved:false, snapT:null};
+    select(hit.c); return;
+  }
+  const c = partAt(x, y);
+  if (c){ drag = {kind:'body', c, lx:x, ly:y, moved:false}; select(c); return; }
+  select(null);
+});
+function bulbUp(c){                                  // which way the bulb's glass points
+  const L = len(c) || 1, ux = (c.b.x - c.a.x) / L, uy = (c.b.y - c.a.y) / L, f = ux < 0 ? -1 : 1;
+  return {x: uy * f, y: -ux * f};
+}
+function partAt(x, y){
+  for (let i = comps.length - 1; i >= 0; i--){
+    const c = comps[i];
+    if (distSeg(x, y, c.a, c.b) < 18) return c;
+    if (c.type === 'bulb'){                          // clicking the glass counts too
+      const u = bulbUp(c), gx = (c.a.x + c.b.x) / 2 + u.x * 48, gy = (c.a.y + c.b.y) / 2 + u.y * 48;
+      if (Math.hypot(x - gx, y - gy) < 30) return c;
+    }
+  }
+  return null;
+}
+cv.addEventListener('contextmenu', e => {            // right-click a part = delete it
+  e.preventDefault();
+  const c = partAt(e.clientX, e.clientY);
+  if (c){ sel = c; removeSel(); }
+});
+addEventListener('pointermove', e => {
+  const x = e.clientX, y = e.clientY;
+  if (!drag){
+    const onDot = endpoints().some(ep => Math.hypot(ep.p.x - x, ep.p.y - y) < 20);
+    cv.style.cursor = meterHit(x, y) ? 'grab' : onDot ? 'crosshair' : partAt(x, y) ? 'move' : 'default';
+    return;
+  }
+  drag.moved = true;
+  if (drag.kind === 'meter'){                        // drag one probe, or the whole meter with its probes
+    const dx = x - drag.lx, dy = y - drag.ly, m = drag.m;
+    if (drag.probe){ drag.probe.x += dx; drag.probe.y += dy; }
+    else { m.x += dx; m.y += dy; for (const p of m.probes){ p.x += dx; p.y += dy; } }
+    drag.lx = x; drag.ly = y;
+    return;
+  }
+  if (drag.kind === 'pt'){
+    let tx = x, ty = y;
+    const t = snapPoint({x:tx, y:ty}, drag.ignore);  // magnet: jump onto a nearby end
+    drag.snapT = t;
+    if (t){ tx = t.x; ty = t.y; }
+    for (const p of drag.pts){ p.x = tx; p.y = ty; }
+  } else {
+    const c = drag.c;
+    if (!drag.oa){ drag.oa = {x: c.a.x - drag.lx, y: c.a.y - drag.ly}; drag.ob = {x: c.b.x - drag.lx, y: c.b.y - drag.ly}; }
+    c.a.x = x + drag.oa.x; c.a.y = y + drag.oa.y; c.b.x = x + drag.ob.x; c.b.y = y + drag.ob.y;
+    drag.snapT = null;
+    for (const p of [c.a, c.b]){                     // magnet: whole part jumps so an end lands on a nearby end
+      const t = snapPoint(p, [c.a, c.b]);
+      if (t){
+        const dx = t.x - p.x, dy = t.y - p.y;
+        c.a.x += dx; c.a.y += dy; c.b.x += dx; c.b.y += dy;
+        drag.snapT = t; break;
+      }
+    }
+    drag.lx = x; drag.ly = y;
+  }
+});
+function snapPoint(p, ignore){
+  let best = null, bd = SNAP;
+  for (const ep of endpoints()){
+    if (ignore.includes(ep.p)) continue;
+    const d = Math.hypot(ep.p.x - p.x, ep.p.y - p.y);
+    if (d < bd){ bd = d; best = ep.p; }
+  }
+  return best;
+}
+addEventListener('pointerup', () => {
+  if (!drag) return;
+  if (drag.kind === 'meter'){ drag = null; return; }
+  if (drag.fresh){
+    // just clicked (or dropped it on the toolbar): put it in the middle of the board
+    const c = drag.c;
+    if (!drag.moved){
+      const x = W / 2 + (Math.random() * 120 - 60), y = H / 2 + (Math.random() * 80 - 40);
+      c.a.x = x - 70; c.a.y = y; c.b.x = x + 70; c.b.y = y;
+      drag.lx = x; drag.ly = y;
+    }
+    drag.moved = true;
+  }
+  // dropping a part back on the parts box throws it away
+  if (drag.kind === 'body' && drag.moved){
+    const r = $('toolbar').getBoundingClientRect();
+    if (drag.lx > r.left && drag.lx < r.right && drag.ly > r.top && drag.ly < r.bottom){
+      sel = drag.c; removeSel(); drag = null; return;
+    }
+  }
+  if (drag.moved){
+    if (drag.kind === 'pt'){
+      // don't snap onto the other end of a part we're holding
+      const own = [];
+      for (const c of comps){ if (drag.pts.includes(c.a)) own.push(c.b); if (drag.pts.includes(c.b)) own.push(c.a); }
+      const t = snapPoint(drag.pts[0], drag.pts.concat(own));
+      if (t) for (const p of drag.pts){ p.x = t.x; p.y = t.y; }
+    } else {
+      const c = drag.c;
+      for (const p of [c.a, c.b]){
+        const t = snapPoint(p, [c.a, c.b]);
+        if (t){ p.x = t.x; p.y = t.y; }
+      }
+    }
+    // keep parts from collapsing to nothing
+    for (const c of comps) if (len(c) < 20){ c.b.x = c.a.x + 60; c.b.y = c.a.y; }
+  }
+  drag = null;
+  placePanel();
+  commit();
+});
+cv.addEventListener('dblclick', () => { if (sel && sel.type === 'switch'){ sel.closed = !sel.closed; showPanel(); commit(); } });
+addEventListener('keydown', e => {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && sel && e.target.tagName !== 'INPUT'){ removeSel(); e.preventDefault(); }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'){ undo(); e.preventDefault(); }
+  if (e.key === 'Escape') $('help').hidden = true;
+});
+function removeSel(){ const i = comps.indexOf(sel); if (i >= 0) comps.splice(i, 1); select(null); commit(); }
+
+// ---------- undo + autosave ----------
+const undoStack = [];
+function snapshot(){
+  return JSON.stringify(comps.map(c => ({type:c.type, a:c.a, b:c.b, V:c.V, R:c.R, thick:c.thick, closed:c.closed})));
+}
+function restore(s){
+  const list = JSON.parse(s);
+  comps.length = 0; sel = null; showPanel();
+  for (const o of list) Object.assign(add(o.type, o.a.x, o.a.y, o.b.x, o.b.y), {V:o.V, R:o.R, thick:o.thick, closed:o.closed});
+}
+function save(s){ try { localStorage.setItem('circuitLab', s); } catch (e) {} }
+function commit(){                                   // call after every finished change
+  const s = snapshot();
+  if (undoStack[undoStack.length - 1] === s) return;
+  undoStack.push(s); if (undoStack.length > 200) undoStack.shift();
+  save(s);
+}
+function undo(){
+  if (undoStack.length < 2) return;
+  undoStack.pop();
+  restore(undoStack[undoStack.length - 1]); save(undoStack[undoStack.length - 1]);
+}
+
+// ---------- ready-made example circuits ----------
+function seriesAt(cx, cy, hw){                       // one loop: battery, two bulbs, a switch
+  const x1 = cx - hw, x2 = cx + hw, y2 = cy + 150, y1 = cy - 110;
+  add('battery', x1, y2, x2, y2);
+  add('wire', x1, y2, x1, y1); add('bulb', x1, y1, cx, y1); add('bulb', cx, y1, x2, y1); add('switch', x2, y1, x2, y2);
+}
+function parallelAt(cx, cy, hw){                     // two branches: each bulb gets the full battery voltage
+  const x1 = cx - hw, x2 = cx + hw, y2 = cy + 150, ym = cy - 10, y0 = cy - 170;
+  add('battery', x1, y2, x2, y2);
+  add('wire', x1, y2, x1, ym); add('wire', x1, ym, x1, y0);
+  add('wire', x2, y2, x2, ym); add('wire', x2, ym, x2, y0);
+  add('bulb', x1, ym, x2, ym); add('bulb', x1, y0, x2, y0);
+}
+function example(kind){
+  comps.length = 0; sel = null; showPanel();
+  const cx = Math.round(W / 2) + 10, cy = Math.round(H / 2) + 20;
+  if (kind === 'series') seriesAt(cx, cy, 220);
+  else if (kind === 'parallel') parallelAt(cx, cy, 220);
+  else { seriesAt(cx - 195, cy, 150); parallelAt(cx + 195, cy, 150); }   // side by side to compare
+  commit();
+}
+
+// ---------- UI ----------
+function select(c){ if (sel === c) return; sel = c; showPanel(); }
+function slider(key, label, min, max, step, unit){
+  return `<label>${label}: <b id="v_${key}">${sel[key]}</b> ${unit}
+    <input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${sel[key]}"></label>`;
+}
+function showPanel(){
+  const p = $('panel');
+  if (!sel){ p.hidden = true; return; }
+  p.hidden = false;
+  let h = `<h3>${NAMES[sel.type]}</h3>`;
+  if (sel.type === 'battery')  h += slider('V', 'Voltage', 0, 100, 1, 'V') + `<button id="rech" style="width:100%">⚡ Recharge</button>`;
+  if (sel.type === 'bulb')     h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
+  if (sel.type === 'resistor') h += slider('R', 'Resistance', 1, 120, 1, 'Ω');
+  if (sel.type === 'wire')     h += slider('thick', 'Thickness', 1, 10, 0.5, '') +
+                                    (wireRes ? '' : '<p>Turn on <b>Wire Resistance</b> (top left) to make thickness and length matter.</p>');
+  if (sel.type === 'switch')   h += `<button id="tog" style="width:100%">${sel.closed ? 'Open switch' : 'Close switch'}</button>`;
+  h += `<label>Stretch (length): <b id="lenV">${(len(sel) / PX_PER_CM).toFixed(0)}</b> cm
+    <input id="lenS" type="range" min="40" max="800" step="10" value="${Math.round(len(sel))}"></label>`;
+  h += `<div id="read"></div><button id="del">🗑 Delete this part</button>`;
+  p.innerHTML = h;
+  p.querySelectorAll('input[data-k]').forEach(el => {
+    el.oninput = () => { sel[el.dataset.k] = +el.value; $('v_' + el.dataset.k).textContent = el.value; };
+    el.onchange = commit;
+  });
+  $('lenS').onchange = commit;
+  $('lenS').oninput = e => {                 // make the part longer / shorter
+    const c = sel, L0 = len(c) || 1, L = +e.target.value;
+    const ux = (c.b.x - c.a.x) / L0, uy = (c.b.y - c.a.y) / L0;
+    c.b = {x: c.a.x + ux * L, y: c.a.y + uy * L};
+    $('lenV').textContent = (L / PX_PER_CM).toFixed(0);
+  };
+  $('del').onclick = removeSel;
+  if ($('rech')) $('rech').onclick = () => { sel.charge = 1; };
+  placePanel();
+  if ($('tog')) $('tog').onclick = () => { sel.closed = !sel.closed; showPanel(); commit(); };
+}
+// the change-box pops up right next to the part you clicked
+function placePanel(){
+  const p = $('panel');
+  if (!sel || p.hidden) return;
+  const ph = p.offsetHeight, pw = p.offsetWidth;
+  const mx = (sel.a.x + sel.b.x) / 2, top = Math.min(sel.a.y, sel.b.y), bot = Math.max(sel.a.y, sel.b.y);
+  const right = Math.max(sel.a.x, sel.b.x), left = Math.min(sel.a.x, sel.b.x), my = (top + bot) / 2;
+  // try below, above, right, left and docked on the right edge; keep the spot that covers the fewest parts
+  const spots = [[mx - pw / 2, bot + 45], [mx - pw / 2, top - 90 - ph], [right + 50, my - ph / 2],
+                 [left - 50 - pw, my - ph / 2], [W - pw - 12, $('view').getBoundingClientRect().bottom + 10]];
+  const pts = [], vr = $('view').getBoundingClientRect();
+  for (let i = 0; i <= 2; i++) for (let j = 0; j <= 4; j++)          // don't sit on top of the Show box
+    pts.push({x: vr.left + vr.width * i / 2, y: vr.top + vr.height * j / 4, w: 8});
+  for (const c of comps){
+    const w = c === sel ? 4 : 1;                     // covering the part you clicked is worst
+    for (let t = 0; t <= 1; t += 0.125) pts.push({x: c.a.x + (c.b.x - c.a.x) * t, y: c.a.y + (c.b.y - c.a.y) * t, w});
+    if (c.type === 'bulb'){ const u = bulbUp(c); pts.push({x: (c.a.x + c.b.x) / 2 + u.x * 48, y: (c.a.y + c.b.y) / 2 + u.y * 48, w: 3 * w}); }
+  }
+  let best = null, bestScore = Infinity;
+  for (const [sx, sy] of spots){
+    const x = Math.max(225, Math.min(W - pw - 10, sx)), y = Math.max(10, Math.min(H - ph - 35, sy));
+    let score = 0;
+    for (const q of pts) if (q.x > x - 14 && q.x < x + pw + 14 && q.y > y - 14 && q.y < y + ph + 14) score += q.w;
+    if (score < bestScore){ bestScore = score; best = [x, y]; }
+  }
+  p.style.left = best[0] + 'px'; p.style.top = best[1] + 'px'; p.style.right = 'auto';
+}
+function fmt(x){ return x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2); }
+function updateReadout(){
+  if (!sel || !$('read')) return;
+  const I = Math.abs(sel.I);
+  let t = `Current: ${fmt(I)} A`;
+  if (sel.type === 'wire'){
+    t += `<br>Length: ${(len(sel) / PX_PER_CM).toFixed(1)} cm`;
+    t += `<br>Resistance: ${wireRes ? fmt(resistance(sel)) : '0'} Ω`;
+  }
+  if (sel.type === 'bulb' || sel.type === 'resistor'){
+    const V = Math.abs(sel.Vab || 0);
+    if (sel.type === 'bulb') t += `<br>Brightness: ${Math.round(100 * bulbBr(sel))}%`;
+    t += `<br>Voltage: ${fmt(V)} V<br>Power: ${fmt(I * I * sel.R)} W` +
+         `<br><span style="color:#a9b8d8">Ohm's law: V = I × R<br>${fmt(V)} = ${fmt(I)} × ${sel.R}</span>`;
+  }
+  if (sel.type === 'wire' && wireRes) t += `<br>Voltage drop: ${fmt(Math.abs(sel.Vab || 0))} V`;
+  if (sel.type === 'battery' && I > 50) t += `<br><span style="color:#ff6b6b">Short circuit!</span>`;
+  if (sel.type === 'battery' && drainOn){
+    t += `<br>Charge: ${Math.round(sel.charge * 100)}%`;
+    if (sel.charge <= 0) t += ` <span style="color:#ff6b6b">(dead)</span>`;
+    else if (sel.I > 0) t += `<br>Runs out in about ${Math.ceil(sel.charge * CAP / Math.min(sel.I, 25))} s`;
+  }
+  $('read').innerHTML = t;
+  if ($('lenS') && document.activeElement !== $('lenS')){
+    $('lenS').value = Math.round(len(sel)); $('lenV').textContent = (len(sel) / PX_PER_CM).toFixed(0);
+  }
+}
+$('wrBtn').onclick = () => {
+  wireRes = !wireRes;
+  $('wrBtn').textContent = 'Wire Resistance: ' + (wireRes ? 'ON' : 'OFF');
+  $('wrBtn').classList.toggle('on', wireRes);
+  $('wrPanel').hidden = !wireRes;
+  showPanel();
+};
+$('rho').oninput = e => { rho = +e.target.value; $('rhoV').textContent = rho; };
+// press a toolbar button and drag: the new part comes out under your mouse (like PhET's toolbox)
+document.querySelectorAll('[data-add]').forEach(b => b.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const x = e.clientX, y = e.clientY;
+  const c = add(b.dataset.add, x - 70, y, x + 70, y);
+  if (c.type === 'switch') c.closed = false;
+  drag = {kind:'body', c, lx:x, ly:y, moved:false, fresh:true};
+  select(c);
+}));
+$('clear').onclick = () => { comps.length = 0; select(null); commit(); };
+$('undo').onclick = undo;
+$('exBoth').onclick = () => example('both');
+$('chkDrain').onchange = e => { drainOn = e.target.checked; };
+$('rechAll').onclick = () => { for (const c of comps) c.charge = 1; };
+$('mAmm').onclick  = e => toggleMeter('amm', 0, e.currentTarget);
+$('mVolt').onclick = e => toggleMeter('volt', 1, e.currentTarget);
+$('mOhm').onclick  = e => toggleMeter('ohm', 2, e.currentTarget);
+$('exSeries').onclick = () => example('series');
+$('exParallel').onclick = () => example('parallel');
+$('chkCur').onchange = e => { showCurrent = e.target.checked; };
+$('chkVal').onchange = e => { showValues = e.target.checked; };
+$('chkAmp').onchange = e => { showAmps = e.target.checked; };
+$('rE').onchange = $('rC').onchange = () => { conventional = $('rC').checked; };
+$('helpBtn').onclick = () => { $('help').hidden = false; };
+$('helpClose').onclick = () => { $('help').hidden = true; };
+$('help').onclick = e => { if (e.target === $('help')) $('help').hidden = true; };
+
+// ---------- drawing ----------
+function line(x1, y1, x2, y2, w, col){
+  ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+function label(c, text, col, side){
+  const L = len(c) || 1, mx = (c.a.x + c.b.x) / 2, my = (c.a.y + c.b.y) / 2;
+  let nx = -(c.b.y - c.a.y) / L, ny = (c.b.x - c.a.x) / L;
+  if (ny > 0 || (ny === 0 && nx > 0)){ nx = -nx; ny = -ny; }   // keep labels above / left
+  const off = (c.type === 'wire' ? 18 + 22 * Math.abs(nx) : 40) * (side || 1);   // sideways labels need more room
+  ctx.font = '600 13px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = col || '#e8eefc';
+  ctx.fillText(text, mx + nx * off, my + ny * off);
+}
+// how bright a bulb is, 0 to 1. Eyes notice brightness in steps of "times as much power",
+// so this is a log scale: 1 W, 10 W, 100 W, 1000 W are evenly spaced and it keeps changing all the way up
+function bulbBr(c){ return Math.min(1, Math.log10(1 + c.I * c.I * c.R) / 3); }
+
+// the road the charges travel. In a bulb they go up one post, across the filament and down the other post
+function chargePath(c, L, ux, uy){
+  if (c.type !== 'bulb') return [c.a, c.b];
+  const mx = (c.a.x + c.b.x) / 2, my = (c.a.y + c.b.y) / 2, f = ux < 0 ? -1 : 1;
+  const P = (lx, ly) => ({x: mx + lx * ux - ly * f * uy, y: my + lx * uy + ly * f * ux});
+  return [c.a, P(-5, 0), P(-5, -16), P(-9, -45), P(9, -45), P(5, -16), P(5, 0), c.b];
+}
+// electrons (blue, move opposite to conventional current) or red conventional-current arrows
+function drawCharges(c, dt, L, ux, uy, h){
+  const sp = 30;
+  let v = (conventional ? c.I : -c.I) * 60; v = Math.max(-500, Math.min(500, v));
+  c.phase += v * dt;
+  if (!showCurrent) return;
+  const pts = chargePath(c, L, ux, uy), bulb = c.type === 'bulb', seg = [];
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++){ const d = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y); seg.push(d); total += d; }
+  let i = 0, acc = 0;
+  for (let s = ((c.phase % sp) + sp) % sp; s < total; s += sp){
+    while (i < seg.length - 1 && s > acc + seg[i]){ acc += seg[i]; i++; }
+    if (!bulb && h && Math.abs(s - L / 2) < h && !(c.type === 'switch' && c.closed)) continue;   // hidden inside the part
+    const d = seg[i] || 1, t = (s - acc) / d, p = pts[i], q = pts[i + 1];
+    const ex = p.x + (q.x - p.x) * t, ey = p.y + (q.y - p.y) * t, dx = (q.x - p.x) / d, dy = (q.y - p.y) / d;
+    const r = bulb && i > 0 && i < seg.length - 1 ? 5.5 : 8, k = r / 8;      // a bit smaller inside the bulb
+    if (conventional){                               // red arrows pointing the way + charge flows
+      const dir = c.I >= 0 ? k : -k;
+      ctx.fillStyle = '#ff5a4d'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(ex + dx * 10 * dir, ey + dy * 10 * dir);
+      ctx.lineTo(ex - dx * 6 * dir - dy * 7 * k, ey - dy * 6 * dir + dx * 7 * k);
+      ctx.lineTo(ex - dx * 6 * dir + dy * 7 * k, ey - dy * 6 * dir - dx * 7 * k);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      continue;
+    }
+    const g = ctx.createRadialGradient(ex - r * 0.3, ey - r * 0.3, 1, ex, ey, r);
+    g.addColorStop(0, '#8fc4ff'); g.addColorStop(1, '#1257d6');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(ex, ey, r, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * k; ctx.lineCap = 'butt';
+    ctx.beginPath(); ctx.moveTo(ex - r / 2, ey); ctx.lineTo(ex + r / 2, ey); ctx.stroke();   // the minus sign
+  }
+}
+function drawComp(c, dt){
+  const L = len(c) || 1, ux = (c.b.x - c.a.x) / L, uy = (c.b.y - c.a.y) / L;
+  const mx = (c.a.x + c.b.x) / 2, my = (c.a.y + c.b.y) / 2, h = HALF[c.type];
+  const w = c.type === 'wire' ? 2 + c.thick * 1.3 : 6;
+
+  if (c === sel) line(c.a.x, c.a.y, c.b.x, c.b.y, w + 10, 'rgba(255,216,102,.35)');
+  if (c.type === 'switch'){
+    line(c.a.x, c.a.y, mx - ux * h, my - uy * h, w, '#c87533');
+    line(mx + ux * h, my + uy * h, c.b.x, c.b.y, w, '#c87533');
+  } else {
+    line(c.a.x, c.a.y, c.b.x, c.b.y, w, '#c87533');
+  }
+
+  if (c.type !== 'bulb') drawCharges(c, dt, L, ux, uy, h);   // bulbs draw theirs on top of the glass
+
+  // body
+  ctx.save(); ctx.translate(mx, my); ctx.rotate(Math.atan2(uy, ux));
+  if (c.type === 'battery'){
+    // AA-style battery: black end (–), copper body, silver nub on the + end
+    const bh = 20, shade = () => {
+      const g = ctx.createLinearGradient(0, -bh, 0, bh);
+      g.addColorStop(0, 'rgba(255,255,255,.15)'); g.addColorStop(0.25, 'rgba(255,255,255,.5)');
+      g.addColorStop(0.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.5)');
+      return g;
+    };
+    ctx.fillStyle = '#c9ccd4'; ctx.beginPath(); ctx.roundRect(h - 2, -8, 9, 16, 3); ctx.fill();      // + nub
+    ctx.fillStyle = shade(); ctx.fill();
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(-h, -bh, 2 * h, 2 * bh, 7); ctx.clip();
+    ctx.fillStyle = '#d2742a'; ctx.fillRect(-h, -bh, 2 * h, 2 * bh);            // copper body
+    ctx.fillStyle = '#17181c'; ctx.fillRect(-h, -bh, 36, 2 * bh);               // black end
+    ctx.fillStyle = '#e8c15a'; ctx.fillRect(-h + 36, -bh, 4, 2 * bh);           // gold ring
+    ctx.fillStyle = '#b9bdc7'; ctx.fillRect(h - 6, -bh, 6, 2 * bh);             // metal cap
+    ctx.fillStyle = shade(); ctx.fillRect(-h, -bh, 2 * h, 2 * bh);              // round shine
+    ctx.restore();
+    ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff'; ctx.fillText('–', -h + 18, 0);
+    ctx.fillStyle = '#3a1c05'; ctx.fillText('+', h - 20, 1);
+    if (drainOn){                                    // charge bar: green when full, red when nearly empty
+      const bw = 2 * h - 8, q = Math.max(0, Math.min(1, c.charge));
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(-bw / 2, -bh - 13, bw, 8, 3); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = q > 0.5 ? '#4cd964' : q > 0.2 ? '#ffcc00' : '#ff453a';
+      if (q > 0){ ctx.beginPath(); ctx.roundRect(-bw / 2 + 1, -bh - 12, (bw - 2) * q, 6, 2); ctx.fill(); }
+    }
+  } else if (c.type === 'bulb'){
+    // real light bulb: screw base sitting on the wire, glass bulb with a filament standing up from it
+    const br = bulbBr(c);
+    if (ux < 0) ctx.scale(1, -1);                    // keep the glass pointing up
+    const gy = -48;                                  // centre of the glass
+    if (br > 0.01){                                  // glow: bigger and stronger with every bit more power
+      const R = 30 + 190 * br, g = ctx.createRadialGradient(0, gy, 10, 0, gy, R);
+      g.addColorStop(0, `rgba(255,${236 + 19 * br},${130 + 100 * br},${Math.min(0.95, 0.15 + 1.5 * br)})`); g.addColorStop(1, 'rgba(255,236,130,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, gy, R, 0, 6.2832); ctx.fill();
+      // light rays: longer and stronger the brighter the bulb is
+      ctx.strokeStyle = `rgba(255,232,120,${Math.min(0.9, 0.15 + 1.2 * br)})`; ctx.lineWidth = 2 + 2 * br; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < 9; i++){
+        const a = (150 + i * 30) * Math.PI / 180, r0 = 34, r1 = 36 + 110 * br;
+        ctx.moveTo(Math.cos(a) * r0, gy + Math.sin(a) * r0); ctx.lineTo(Math.cos(a) * r1, gy + Math.sin(a) * r1);
+      }
+      ctx.stroke();
+    }
+    // glass
+    ctx.beginPath();
+    ctx.moveTo(-10, -16);
+    ctx.bezierCurveTo(-10, -30, -26, -32, -26, gy);
+    ctx.arc(0, gy, 26, Math.PI, 2 * Math.PI);
+    ctx.bezierCurveTo(26, -32, 10, -30, 10, -16);
+    ctx.closePath();
+    ctx.fillStyle = '#1b2942'; ctx.fill();
+    ctx.fillStyle = `rgba(255,${222 + 33 * br},${90 + 165 * br * br},${Math.min(1, 0.1 + 2.3 * br)})`; ctx.fill();   // dull, then yellow, then white-hot
+    ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 2; ctx.stroke();
+    // filament
+    ctx.strokeStyle = br > 0.03 ? '#fffbe0' : '#9aa3b8'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-5, -16); ctx.lineTo(-9, gy + 4);
+    for (let i = 1; i <= 5; i++) ctx.lineTo(-9 + i * 3, gy + (i % 2 ? -5 : 4));
+    ctx.lineTo(9, gy + 4); ctx.lineTo(5, -16);
+    ctx.stroke();
+    // shine on the glass
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(0, gy, 19, Math.PI * 1.1, Math.PI * 1.4); ctx.stroke();
+    // metal screw base
+    const mg = ctx.createLinearGradient(-12, 0, 12, 0);
+    mg.addColorStop(0, '#70757f'); mg.addColorStop(0.35, '#e6e9ef'); mg.addColorStop(1, '#5d626c');
+    ctx.fillStyle = mg; ctx.beginPath(); ctx.roundRect(-12, -17, 24, 24, 3); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1.5; ctx.lineCap = 'butt';
+    for (let y = -11; y <= 3; y += 5){ ctx.beginPath(); ctx.moveTo(-12, y + 1.5); ctx.lineTo(12, y - 1.5); ctx.stroke(); }
+    ctx.fillStyle = '#2b2f3a'; ctx.beginPath(); ctx.roundRect(-6, 7, 12, 5, 2); ctx.fill();
+  } else if (c.type === 'resistor'){
+    ctx.fillStyle = '#d8c39a'; ctx.fillRect(-h, -11, 2 * h, 22);
+    ['#8a3b12', '#111', '#c0392b', '#d4af37'].forEach((col, i) => { ctx.fillStyle = col; ctx.fillRect(-24 + i * 14, -11, 6, 22); });
+  } else if (c.type === 'switch'){
+    ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-h, 0);
+    if (c.closed) ctx.lineTo(h, 0); else ctx.lineTo(h * 0.75, -h * 1.1);
+    ctx.stroke();
+    ctx.fillStyle = '#dfe6f5';
+    ctx.beginPath(); ctx.arc(-h, 0, 5, 0, 6.2832); ctx.arc(h, 0, 5, 0, 6.2832); ctx.fill();
+  }
+  ctx.restore();
+  if (c.type === 'bulb') drawCharges(c, dt, L, ux, uy, h);
+
+  // labels
+  const short = c.type === 'battery' && Math.abs(c.I) > 50;
+  if (showAmps){                                     // ammeter reading on the other side from the value label
+    const txt = `${fmt(Math.abs(c.I))} A`;
+    if (c.type === 'bulb'){
+      const u = bulbUp(c);
+      ctx.font = '600 13px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffd866'; ctx.fillText(txt, mx - u.x * 44, my - u.y * 44);
+    } else label(c, txt, '#ffd866', -1);
+  }
+  if (!showValues){ if (short) label(c, 'SHORT!', '#ff6b6b'); return; }
+  if (c.type === 'battery'){
+    const dead = drainOn && c.charge <= 0;
+    const pct = drainOn ? `  ·  ${Math.round(c.charge * 100)}%` : '';
+    label(c, short ? `${c.V} V  SHORT!` : dead ? `${c.V} V  DEAD` : `${c.V} V${pct}`, short || dead ? '#ff6b6b' : null);
+  }
+  if (c.type === 'resistor') label(c, `${c.R} Ω`);
+  if (c.type === 'bulb'){                            // label goes under the base, away from the glass
+    const u = bulbUp(c);
+    ctx.font = '600 13px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#e8eefc'; ctx.fillText(`${c.R} Ω`, mx - u.x * 26, my - u.y * 26);
+  }
+  if (c.type === 'wire' && wireRes) label(c, `${fmt(resistance(c))} Ω`, '#a9b8d8');
+}
+function drawGrid(){
+  ctx.fillStyle = '#0f1b2d'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x < W; x += 40){ ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+  for (let y = 0; y < H; y += 40){ ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  ctx.stroke();
+}
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  solve();
+  if (drainOn) for (const c of comps)                // more current = the battery empties faster
+    if (c.type === 'battery' && c.I > 0) c.charge = Math.max(0, c.charge - Math.min(c.I, 25) * dt / CAP);
+  drawGrid();
+  if (!comps.length){
+    ctx.font = '600 20px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#5f76a8';
+    ctx.fillText('Drag parts out of the box on the left to build a circuit', W / 2 + 40, H / 2 - 16);
+    ctx.font = '15px -apple-system,Helvetica,Arial';
+    ctx.fillText('or press "Series example" / "Parallel example" to start with one', W / 2 + 40, H / 2 + 16);
+  }
+  for (const c of comps) drawComp(c, dt);
+  for (const ep of endpoints()){
+    const on = ep.c === sel;
+    ctx.fillStyle = on ? '#ffd866' : '#e09a5a'; ctx.strokeStyle = '#0f1b2d'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(ep.p.x, ep.p.y, on ? 11 : 9, 0, 6.2832); ctx.fill(); ctx.stroke();
+  }
+  if (drag && drag.snapT){                         // green ring = "these ends are connected"
+    ctx.strokeStyle = '#5dff8f'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(drag.snapT.x, drag.snapT.y, 17, 0, 6.2832); ctx.stroke();
+  }
+  drawMeters();
+  updateReadout();
+  requestAnimationFrame(frame);
+}
+
+// picks up where you left off (saved in this browser); a new computer starts with an empty board
+try { const s = localStorage.getItem('circuitLab'); if (s) restore(s); } catch (e) { comps.length = 0; }
+undoStack.push(snapshot());
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
