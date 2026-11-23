@@ -51,8 +51,11 @@
   #zoom{position:absolute;left:12px;bottom:34px;z-index:5;display:flex;gap:6px;align-items:center}
   #zoom button{padding:4px 11px}
   #zoom #zPct{min-width:58px}
-  #credit{position:absolute;right:14px;bottom:34px;z-index:4;font-size:13px;font-weight:600;color:#a9b8d8;pointer-events:none}
-  #hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:12.5px;color:#8fa3cc;white-space:nowrap}
+  #credit{position:absolute;right:14px;bottom:34px;z-index:4;font-size:13px;font-weight:600;color:var(--hint,#a9b8d8);pointer-events:none}
+  #hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:12.5px;color:var(--hint,#8fa3cc);white-space:nowrap}
+  #themes{display:flex;gap:7px;margin-top:7px}
+  #view #themes button{width:26px;height:26px;border-radius:50%;padding:0;margin:0;border:2px solid #3d5690}
+  #view #themes button.on{border-color:#fff;box-shadow:0 0 0 2px #39a862}
 </style>
 </head>
 <body>
@@ -99,6 +102,8 @@
   <button id="mAmm">Ammeter</button>
   <button id="mVolt">Voltmeter</button>
   <button id="mOhm">Ohmmeter</button>
+  <div class="hd">Background</div>
+  <div id="themes"></div>
   <button id="helpBtn">❓ How to use</button>
 </div>
 
@@ -121,6 +126,7 @@
       <li><b>Fuse:</b> it blows (breaks the circuit) when the current goes above its rating. Click it to change the rating or put in a new fuse.</li>
       <li><b>Schematic view</b> (top right): shows the same circuit as a diagram with the standard symbols. Press it again to go back.</li>
       <li><b>More space:</b> scroll or use − / + (bottom left) to zoom, drag the empty background to slide the board around, and press » to tuck the Circuit Lab box away.</li>
+      <li><b>Background:</b> pick a colour with the round buttons at the bottom of the Circuit Lab box. It is remembered next time.</li>
       <li><b>Wire Resistance</b> (top left): when it is ON, longer and thinner wires have more resistance, so the current drops and the electrons slow down.</li>
       <li><b>Amps and volts:</b> tick “Amps on every part” and “Volts on bulbs + resistors” (the examples turn them on). In series the amps are the same everywhere and the volts are split between the bulbs. In parallel every branch gets the full volts and the amps split between the branches.</li>
       <li><b>Series vs Parallel:</b> press that example to see both side by side. The series bulbs are dimmer (they share the voltage). The parallel bulbs are brighter, but the battery gives twice the current, so its charge bar empties faster.</li>
@@ -160,6 +166,30 @@ function zoomAt(sx, sy, f){
   placePanel();
 }
 let schematic = false;
+
+// ---------- background colours ----------
+const DARK = {grid:'rgba(255,255,255,.04)', ink:'#e8eefc', amp:'#ffd866', dim:'#a9b8d8', metal:'#dfe6f5', hint:'#8fa3cc', glass:'#1b2942', ray:'255,232,120'};
+const THEMES = {
+  navy:   {name:'Navy', bg:'#0f1b2d', ...DARK},
+  black:  {name:'Black', bg:'#07090d', ...DARK},
+  green:  {name:'Chalkboard green', bg:'#143a2d', ...DARK, hint:'#9cc4b3', dim:'#b5d6c8'},
+  purple: {name:'Purple', bg:'#241538', ...DARK, hint:'#b3a3d6', dim:'#c4b8e0'},
+  paper:  {name:'Paper (light)', bg:'#f3efe4', grid:'rgba(0,0,0,.07)', ink:'#1b2942', amp:'#a85a00', dim:'#55617a', metal:'#56617a', hint:'#55617a', glass:'#c5ccd9', ray:'235,140,0'}
+};
+let T = THEMES.navy;
+function setTheme(k){
+  if (!THEMES[k]) k = 'navy';
+  T = THEMES[k];
+  document.body.style.background = T.bg; document.body.style.setProperty('--hint', T.hint);
+  document.querySelectorAll('#themes button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+  try { localStorage.setItem('circuitLabTheme', k); } catch (e) {}
+}
+for (const k in THEMES){
+  const b = document.createElement('button');
+  b.dataset.k = k; b.title = THEMES[k].name; b.style.background = THEMES[k].bg; b.onclick = () => setTheme(k);
+  $('themes').appendChild(b);
+}
+try { setTheme(localStorage.getItem('circuitLabTheme') || 'navy'); } catch (e) { setTheme('navy'); }
 
 // ---------- circuit data ----------
 const comps = [];
@@ -705,7 +735,7 @@ function label(c, text, col, side){
   if (ny > 0 || (ny === 0 && nx > 0)){ nx = -nx; ny = -ny; }   // keep labels above / left
   const off = (c.type === 'wire' ? 18 + 22 * Math.abs(nx) : 40) * (side || 1);   // sideways labels need more room
   ctx.font = '600 13px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = col || '#e8eefc';
+  ctx.fillStyle = col || T.ink;
   ctx.fillText(text, mx + nx * off, my + ny * off);
 }
 // how bright a bulb is, 0 to 1. Eyes notice brightness in steps of "times as much power",
@@ -755,7 +785,7 @@ function drawCharges(c, dt, L, ux, uy, h){
 }
 // schematic view: the same part drawn as its circuit-diagram symbol
 function drawSchem(c, dt, L, ux, uy, mx, my){
-  const t = c.type, ink = '#e8eefc';
+  const t = c.type, ink = T.ink;
   let h = {wire:0, battery:0, bulb:16, resistor:30, switch:22, fuse:24}[t], cells = 0;
   if (t === 'battery'){ cells = Math.max(1, Math.min(4, Math.round(c.V / 3))); h = (cells * 8 + (cells - 1) * 10) / 2; }   // about one cell for every 3 V
   h = Math.min(h, L / 2);
@@ -785,7 +815,7 @@ function drawSchem(c, dt, L, ux, uy, mx, my){
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R, 0, 6.2832); ctx.fill();
     }
     ctx.beginPath(); ctx.arc(0, 0, 16, 0, 6.2832);
-    ctx.fillStyle = '#0f1b2d'; ctx.fill(); ctx.fillStyle = `rgba(255,222,90,${br})`; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = T.bg; ctx.fill(); ctx.fillStyle = `rgba(255,222,90,${br})`; ctx.fill(); ctx.stroke();
     seg(-11.3, -11.3, 11.3, 11.3); seg(-11.3, 11.3, 11.3, -11.3);
   } else if (t === 'resistor'){                      // zig-zag
     ctx.beginPath(); ctx.moveTo(-30, 0);
@@ -859,7 +889,7 @@ function drawComp(c, dt){
       g.addColorStop(0, `rgba(255,${236 + 19 * br},${130 + 100 * br},${Math.min(0.95, 0.15 + 1.5 * br)})`); g.addColorStop(1, 'rgba(255,236,130,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, gy, R, 0, 6.2832); ctx.fill();
       // light rays: longer and stronger the brighter the bulb is
-      ctx.strokeStyle = `rgba(255,232,120,${Math.min(0.9, 0.15 + 1.2 * br)})`; ctx.lineWidth = 2 + 2 * br; ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(${T.ray},${Math.min(0.9, 0.15 + 1.2 * br)})`; ctx.lineWidth = 2 + 2 * br; ctx.lineCap = 'round';
       ctx.beginPath();
       for (let i = 0; i < 9; i++){
         const a = (150 + i * 30) * Math.PI / 180, r0 = 34, r1 = 36 + 110 * br;
@@ -874,9 +904,9 @@ function drawComp(c, dt){
     ctx.arc(0, gy, 26, Math.PI, 2 * Math.PI);
     ctx.bezierCurveTo(26, -32, 10, -30, 10, -16);
     ctx.closePath();
-    ctx.fillStyle = '#1b2942'; ctx.fill();
+    ctx.fillStyle = T.glass; ctx.fill();
     ctx.fillStyle = `rgba(255,${222 + 33 * br},${90 + 165 * br * br},${Math.min(1, 0.1 + 2.3 * br)})`; ctx.fill();   // dull, then yellow, then white-hot
-    ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = T.metal; ctx.lineWidth = 2; ctx.stroke();
     // filament
     ctx.strokeStyle = br > 0.03 ? '#fffbe0' : '#9aa3b8'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
     ctx.beginPath();
@@ -898,15 +928,15 @@ function drawComp(c, dt){
     ctx.fillStyle = '#d8c39a'; ctx.fillRect(-h, -11, 2 * h, 22);
     ['#8a3b12', '#111', '#c0392b', '#d4af37'].forEach((col, i) => { ctx.fillStyle = col; ctx.fillRect(-24 + i * 14, -11, 6, 22); });
   } else if (c.type === 'switch'){
-    ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.strokeStyle = T.metal; ctx.lineWidth = 5; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(-h, 0);
     if (c.closed) ctx.lineTo(h, 0); else ctx.lineTo(h * 0.75, -h * 1.1);
     ctx.stroke();
-    ctx.fillStyle = '#dfe6f5';
+    ctx.fillStyle = T.metal;
     ctx.beginPath(); ctx.arc(-h, 0, 5, 0, 6.2832); ctx.arc(h, 0, 5, 0, 6.2832); ctx.fill();
   } else if (c.type === 'fuse'){
     // glass tube fuse: metal caps on the ends, thin wire inside that melts when too much current flows
-    ctx.fillStyle = c.blown ? 'rgba(60,50,45,.9)' : 'rgba(190,220,255,.25)'; ctx.strokeStyle = '#dfe6f5'; ctx.lineWidth = 1.5;
+    ctx.fillStyle = c.blown ? 'rgba(60,50,45,.9)' : 'rgba(190,220,255,.25)'; ctx.strokeStyle = T.metal; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.roundRect(-h + 8, -9, 2 * h - 16, 18, 4); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = c.blown ? '#8a8f9b' : '#f2d08a'; ctx.lineWidth = 2; ctx.lineCap = 'round';
     ctx.beginPath();
@@ -957,8 +987,8 @@ function drawLabels(c, mx, my){
     if (c.type === 'bulb'){
       const u = bulbUp(c);
       ctx.font = '600 13px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffd866'; ctx.fillText(txt, mx - u.x * 44, my - u.y * 44);
-    } else label(c, txt, '#ffd866', -1);
+      ctx.fillStyle = T.amp; ctx.fillText(txt, mx - u.x * 44, my - u.y * 44);
+    } else label(c, txt, T.amp, -1);
   }
   if (!showValues){ if (short) label(c, 'SHORT!', '#ff6b6b'); return; }
   if (c.type === 'battery'){
@@ -971,13 +1001,13 @@ function drawLabels(c, mx, my){
   if (c.type === 'bulb'){                            // label goes under the base, away from the glass
     const u = bulbUp(c);
     ctx.font = '600 13px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#e8eefc'; ctx.fillText(`${c.R} Ω`, mx - u.x * 26, my - u.y * 26);
+    ctx.fillStyle = T.ink; ctx.fillText(`${c.R} Ω`, mx - u.x * 26, my - u.y * 26);
   }
-  if (c.type === 'wire' && wireRes) label(c, `${fmt(resistance(c))} Ω`, '#a9b8d8');
+  if (c.type === 'wire' && wireRes) label(c, `${fmt(resistance(c))} Ω`, T.dim);
 }
 function drawGrid(){
-  ctx.fillStyle = '#0f1b2d'; ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = T.grid; ctx.lineWidth = 1;
   ctx.beginPath();
   const g = 40 * view.z, x0 = ((view.ox % g) + g) % g, y0 = ((view.oy % g) + g) % g;   // grid moves and shrinks with the board
   for (let x = x0; x < W; x += g){ ctx.moveTo(x, 0); ctx.lineTo(x, H); }
@@ -1003,7 +1033,7 @@ function frame(now){
   drawGrid();
   if (!comps.length){
     ctx.font = '600 20px -apple-system,Helvetica,Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#5f76a8';
+    ctx.fillStyle = T.hint;
     ctx.fillText('Drag parts out of the box on the left to build a circuit', W / 2 + 40, H / 2 - 16);
     ctx.font = '15px -apple-system,Helvetica,Arial';
     ctx.fillText('or press "Series example" / "Parallel example" to start with one', W / 2 + 40, H / 2 + 16);
@@ -1012,7 +1042,7 @@ function frame(now){
   for (const c of comps) drawComp(c, dt);
   for (const ep of endpoints()){
     const on = ep.c === sel, r = schematic ? 5 : 9;
-    ctx.fillStyle = on ? '#ffd866' : schematic ? '#e8eefc' : '#e09a5a'; ctx.strokeStyle = '#0f1b2d'; ctx.lineWidth = 2;
+    ctx.fillStyle = on ? '#ffd866' : schematic ? T.ink : '#e09a5a'; ctx.strokeStyle = T.bg; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(ep.p.x, ep.p.y, on ? r + 2 : r, 0, 6.2832); ctx.fill(); ctx.stroke();
   }
   if (drag && drag.snapT){                         // green ring = "these ends are connected"
